@@ -143,3 +143,64 @@ def db_for():
         return tenant_session(uuid.UUID(client.org_id))
 
     return _open
+
+
+@pytest.fixture
+def drain():
+    """Run queued background jobs in-process through the real worker code path."""
+    from app.workers.queue import run_pending
+
+    return run_pending
+
+
+@pytest.fixture
+def allow_private(monkeypatch):
+    monkeypatch.setattr(get_settings(), "allow_private_targets", True)
+
+
+class LocalSite:
+    """Loopback HTTP server with mutable routes, used as an authorized assessment target."""
+
+    def __init__(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        site = self
+        self.routes: dict[str, tuple[int, dict, bytes]] = {}
+        self.requests: list[tuple[str, str, dict, bytes]] = []
+        self.handler = None  # optional callable(method, path, headers, body) -> (status, headers, body) | None
+
+        class Handler(BaseHTTPRequestHandler):
+            def _serve(self):
+                length = int(self.headers.get("content-length") or 0)
+                body = self.rfile.read(length) if length else b""
+                site.requests.append((self.command, self.path, dict(self.headers), body))
+                response = site.handler(self.command, self.path, dict(self.headers), body) if site.handler else None
+                status, headers, payload = response or site.routes.get(self.path, (404, {}, b"not found"))
+                self.send_response(status)
+                for k, v in headers.items():
+                    for item in v if isinstance(v, list) else [v]:
+                        self.send_header(k, item)
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            do_GET = do_POST = _serve
+
+            def log_message(self, *args):
+                pass
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+@pytest.fixture
+def site():
+    s = LocalSite()
+    yield s
+    s.close()
