@@ -1,0 +1,67 @@
+[project]
+name = "ctem-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.20.1",
+    "argon2-cffi>=25.1.0",
+    "boto3>=1.43.127",
+    "cryptography>=50.0.2",
+    "defusedxml>=0.7.1",
+    "dnspython>=2.9.2",
+    "email-validator>=2.3.0",
+    "fastapi>=0.162.4",
+    "httpx>=0.28.1",
+    "openpyxl>=3.1.5",
+    "opentelemetry-exporter-otlp-proto-http>=1.45.2",
+    "opentelemetry-instrumentation-fastapi>=0.66b2",
+    "opentelemetry-sdk>=1.45.2",
+    "prometheus-client>=0.26.0",
+    "psycopg[binary]>=3.3.8",
+    "pydantic>=2.14.3",
+    "pydantic-settings>=2.16.2",
+    "pyotp>=2.10.0",
+    "python-multipart>=0.0.33",
+    "pyyaml>=6.0.3",
+    "redis>=8.1.0",
+    "reportlab>=5.1.0",
+    "sqlalchemy>=2",
+    "structlog>=26.1.0",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "moto[cloudtrail,ec2,iam,rds,s3]>=5.2.5",
+    "mypy>=2.4.1",
+    "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.4",
+    "types-pyyaml>=6.0.12.20261103",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q --strict-markers"
+markers = ["network: test requires outbound network access (deselected by default in CI)"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "C4", "SIM"]
+ignore = ["S101", "B008", "E501", "S311", "SIM108", "UP046"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106", "S108", "S603", "S607"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+ignore_missing_imports = true
+check_untyped_defs = true
+exclude = ["migrations/"]

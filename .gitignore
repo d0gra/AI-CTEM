@@ -1,0 +1,25 @@
+# local infrastructure and secrets
+.local/
+.env
+.env.*
+!.env.example
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+backend/var/
+# node
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+coverage/
+# os / editors
+.DS_Store
+.idea/
+.vscode/
