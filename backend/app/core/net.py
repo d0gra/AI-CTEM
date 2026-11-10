@@ -7,6 +7,7 @@ validated address so a second DNS lookup cannot redirect the request (DNS rebind
 
 import ipaddress
 import socket
+import time
 from dataclasses import dataclass, field
 
 import httpx
@@ -135,6 +136,7 @@ def safe_fetch(
             request = client.build_request(
                 method, target, headers=request_headers, content=content, json=json_body, extensions=extensions
             )
+            started = time.monotonic()
             response = client.send(request, stream=True)
             try:
                 body = bytearray()
@@ -161,7 +163,7 @@ def safe_fetch(
             truncated=truncated,
             redirect_chain=chain,
             resolved_ip=ip,
-            elapsed_ms=int(response.elapsed.total_seconds() * 1000) if response.is_closed else 0,
+            elapsed_ms=int((time.monotonic() - started) * 1000),
             raw_set_cookies=response.headers.get_list("set-cookie"),
         )
     raise BlockedDestination("Too many redirects")

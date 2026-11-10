@@ -65,7 +65,10 @@ def tool_status(spec: EngineSpec) -> dict:
     version = None
     try:
         out = subprocess.run([path, *spec.version_args], capture_output=True, text=True, timeout=10)  # noqa: S603
-        lines = [ln.strip() for ln in (out.stdout + "\n" + out.stderr).splitlines() if ln.strip()]
+        import re
+
+        text_out = re.sub(r"\x1b\[[0-9;]*m", "", out.stdout + "\n" + out.stderr)
+        lines = [ln.strip() for ln in text_out.splitlines() if ln.strip()]
         version = next((ln for ln in lines if any(ch.isdigit() for ch in ln) and "WARN" not in ln.upper()), None)
     except (OSError, subprocess.SubprocessError):
         pass

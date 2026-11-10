@@ -1,5 +1,6 @@
-"""Imports every engine module so that it registers itself. Imported by the API and workers."""
+"""Imports every engine and connector module so that it registers itself."""
 
-from app.engines import dns_discovery, http_exposure  # noqa: F401
-import app.integrations.notify.channels  # noqa: E402,F401
-import app.integrations.ticketing.connectors  # noqa: E402,F401
+import app.integrations.notify.channels  # noqa: F401
+import app.integrations.ticketing.connectors  # noqa: F401
+from app.engines import dns_discovery, http_exposure, openapi_analysis, scanners  # noqa: F401
+from app.integrations.intel import sources  # noqa: F401

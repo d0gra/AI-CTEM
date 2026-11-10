@@ -70,7 +70,11 @@ def _covers(entry: ScopeTarget, target: str) -> bool:
         return host == entry.value or host.endswith("." + entry.value)
     if entry.kind == "cidr":
         try:
-            return ipaddress.ip_address(host.strip("[]")) in ipaddress.ip_network(entry.value)
+            scope_net = ipaddress.ip_network(entry.value)
+            if "://" not in target and "/" in target:  # a network target must lie entirely inside the scope
+                wanted = ipaddress.ip_network(target, strict=False)
+                return wanted.version == scope_net.version and wanted.subnet_of(scope_net)  # type: ignore[arg-type]
+            return ipaddress.ip_address(host.strip("[]")) in scope_net
         except ValueError:
             return False
     if entry.kind == "url":
