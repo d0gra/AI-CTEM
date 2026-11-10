@@ -698,7 +698,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "moto", extras = ["cloudtrail", "ec2", "iam", "rds", "s3"], specifier = ">=5.2.5" },
+    { name = "moto", extras = ["cloudtrail", "ec2", "eks", "iam", "kms", "rds", "s3", "sts"], specifier = ">=5.2.5" },
     { name = "mypy", specifier = ">=2.4.1" },
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "pytest-cov", specifier = ">=7.1.0" },

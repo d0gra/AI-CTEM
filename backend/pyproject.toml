@@ -32,7 +32,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "moto[cloudtrail,ec2,iam,rds,s3]>=5.2.5",
+    "moto[cloudtrail,ec2,eks,iam,kms,rds,s3,sts]>=5.2.5",
     "mypy>=2.4.1",
     "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
