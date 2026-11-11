@@ -1,0 +1,84 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+permissions: { contents: read }
+concurrency: { group: "ci-${{ github.ref }}", cancel-in-progress: true }
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env: { POSTGRES_PASSWORD: postgres }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 20
+    env:
+      CTEM_TEST_APP_URL: postgresql+psycopg://ctem_app:ctem_app_dev@127.0.0.1:5432/ctem_test
+      CTEM_TEST_OWNER_URL: postgresql+psycopg://ctem_owner:ctem_owner_dev@127.0.0.1:5432/ctem_test
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Create database roles
+        run: |
+          PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE ctem_owner LOGIN PASSWORD 'ctem_owner_dev';
+          CREATE ROLE ctem_app LOGIN PASSWORD 'ctem_app_dev' NOSUPERUSER NOBYPASSRLS;
+          CREATE DATABASE ctem_test OWNER ctem_owner;
+          SQL
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends nmap
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - name: Type check (advisory until the remaining findings are cleared)
+        run: uv run mypy app
+        continue-on-error: true
+      - name: Migration is in sync with the models
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
+        env:
+          CTEM_MIGRATION_DATABASE_URL: ${{ env.CTEM_TEST_OWNER_URL }}
+      - run: uv run pytest --cov=app --cov-report=term-missing:skip-covered
+      - name: Dependency vulnerabilities
+        run: uvx pip-audit --strict --requirement <(uv export --frozen --no-dev --no-hashes --no-emit-project)
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { package_json_file: frontend/package.json }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: frontend/pnpm-lock.yaml }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm audit --prod --audit-level high
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+      - name: Static analysis
+        run: pipx run semgrep scan --config auto --error --metrics off backend/app frontend/app frontend/components frontend/lib
+
+  images:
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --target api -t ctem/api:ci backend
+      - run: docker build --target worker -t ctem/worker:ci backend
+      - run: docker build -t ctem/web:ci frontend
+      - name: Scan images
+        uses: aquasecurity/trivy-action@0.28.0
+        with: { image-ref: "ctem/api:ci", severity: "CRITICAL,HIGH", exit-code: "1", ignore-unfixed: true }

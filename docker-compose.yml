@@ -1,0 +1,96 @@
+# Local/single-host deployment. Copy .env.example to .env and set the secrets before starting:
+#   docker compose up --build
+name: ctem
+
+x-backend-env: &backend-env
+  CTEM_ENV: ${CTEM_ENV:-production}
+  CTEM_DATABASE_URL: postgresql+psycopg://ctem_app:${CTEM_APP_DB_PASSWORD:?set CTEM_APP_DB_PASSWORD}@postgres:5432/ctem
+  CTEM_MIGRATION_DATABASE_URL: postgresql+psycopg://ctem_owner:${CTEM_OWNER_DB_PASSWORD:?set CTEM_OWNER_DB_PASSWORD}@postgres:5432/ctem
+  CTEM_REDIS_URL: redis://redis:6379/0
+  CTEM_SECRET_KEY: ${CTEM_SECRET_KEY:?set CTEM_SECRET_KEY}
+  CTEM_ENCRYPTION_KEYS: ${CTEM_ENCRYPTION_KEYS:?set CTEM_ENCRYPTION_KEYS}
+  CTEM_COOKIE_SECURE: ${CTEM_COOKIE_SECURE:-true}
+  CTEM_PUBLIC_BASE_URL: ${CTEM_PUBLIC_BASE_URL:-http://localhost:3000}
+  CTEM_STORAGE_LOCAL_PATH: /app/var/storage
+  CTEM_ALLOW_PRIVATE_TARGETS: ${CTEM_ALLOW_PRIVATE_TARGETS:-false}
+  CTEM_REPO_SCAN_ROOT: ${CTEM_REPO_SCAN_ROOT:-}
+  CTEM_NVD_API_KEY: ${CTEM_NVD_API_KEY:-}
+  CTEM_SMTP_HOST: ${CTEM_SMTP_HOST:-}
+  CTEM_OTEL_EXPORTER_OTLP_ENDPOINT: ${CTEM_OTEL_EXPORTER_OTLP_ENDPOINT:-}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      CTEM_OWNER_DB_PASSWORD: ${CTEM_OWNER_DB_PASSWORD}
+      CTEM_APP_DB_PASSWORD: ${CTEM_APP_DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infrastructure/docker/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ctem"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    build: { context: ./backend, target: api }
+    command: ["alembic", "upgrade", "head"]
+    environment: *backend-env
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    build: { context: ./backend, target: api }
+    environment: *backend-env
+    volumes: [storage:/app/var/storage]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+  worker:
+    build: { context: ./backend, target: worker }
+    environment:
+      <<: *backend-env
+      CTEM_WORKER_METRICS_PORT: "9108"
+    volumes: [storage:/app/var/storage]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+      args: { CTEM_BACKEND_URL: "http://api:8000" }
+    ports: ["${CTEM_WEB_PORT:-3000}:3000"]
+    depends_on: [api]
+    read_only: true
+    tmpfs: [/tmp, /app/.next/cache]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  storage:

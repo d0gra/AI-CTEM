@@ -1,0 +1,156 @@
+# Reference manifests. Build and push the three images (api, worker, web), replace the image
+# names, create the Secret from your secret manager, then: kubectl apply -f infrastructure/kubernetes/
+# PostgreSQL and Redis are expected as managed services or separately operated workloads.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ctem
+  labels: { pod-security.kubernetes.io/enforce: restricted }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: ctem-config, namespace: ctem }
+data:
+  CTEM_ENV: production
+  CTEM_COOKIE_SECURE: "true"
+  CTEM_PUBLIC_BASE_URL: https://ctem.example.com
+  CTEM_ALLOW_REGISTRATION: "false"
+  CTEM_STORAGE_BACKEND: s3
+  CTEM_S3_BUCKET: ctem-evidence
+  CTEM_LOG_JSON: "true"
+---
+# Example only: create this from a secret manager (External Secrets, Sealed Secrets, CSI driver).
+apiVersion: v1
+kind: Secret
+metadata: { name: ctem-secrets, namespace: ctem }
+type: Opaque
+stringData:
+  CTEM_SECRET_KEY: REPLACE_ME
+  CTEM_ENCRYPTION_KEYS: REPLACE_ME
+  CTEM_DATABASE_URL: postgresql+psycopg://ctem_app:REPLACE_ME@postgres:5432/ctem
+  CTEM_MIGRATION_DATABASE_URL: postgresql+psycopg://ctem_owner:REPLACE_ME@postgres:5432/ctem
+  CTEM_REDIS_URL: redis://redis:6379/0
+---
+apiVersion: batch/v1
+kind: Job
+metadata: { name: ctem-migrate, namespace: ctem }
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: migrate
+          image: registry.example.com/ctem/api:0.1.0
+          command: ["alembic", "upgrade", "head"]
+          envFrom: [{ configMapRef: { name: ctem-config } }, { secretRef: { name: ctem-secrets } }]
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: ctem-api, namespace: ctem }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: ctem-api } }
+  template:
+    metadata:
+      labels: { app: ctem-api }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8000", prometheus.io/path: /metrics }
+    spec:
+      automountServiceAccountToken: false
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: api
+          image: registry.example.com/ctem/api:0.1.0
+          ports: [{ containerPort: 8000 }]
+          envFrom: [{ configMapRef: { name: ctem-config } }, { secretRef: { name: ctem-secrets } }]
+          readinessProbe: { httpGet: { path: /readyz, port: 8000 }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /healthz, port: 8000 }, periodSeconds: 20 }
+          resources: { requests: { cpu: 250m, memory: 384Mi }, limits: { memory: 1Gi } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: api, namespace: ctem }
+spec:
+  selector: { app: ctem-api }
+  ports: [{ port: 8000, targetPort: 8000 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: ctem-worker, namespace: ctem }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: ctem-worker } }
+  template:
+    metadata:
+      labels: { app: ctem-worker }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "9108" }
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 120
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: worker
+          image: registry.example.com/ctem/worker:0.1.0
+          env: [{ name: CTEM_WORKER_METRICS_PORT, value: "9108" }]
+          envFrom: [{ configMapRef: { name: ctem-config } }, { secretRef: { name: ctem-secrets } }]
+          ports: [{ containerPort: 9108 }]
+          resources: { requests: { cpu: 500m, memory: 512Mi }, limits: { memory: 2Gi } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: {} }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: ctem-web, namespace: ctem }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: ctem-web } }
+  template:
+    metadata: { labels: { app: ctem-web } }
+    spec:
+      automountServiceAccountToken: false
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: web
+          image: registry.example.com/ctem/web:0.1.0   # built with CTEM_BACKEND_URL=http://api:8000
+          ports: [{ containerPort: 3000 }]
+          readinessProbe: { httpGet: { path: /login, port: 3000 }, periodSeconds: 10 }
+          resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 512Mi } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          volumeMounts: [{ name: cache, mountPath: /app/.next/cache }, { name: tmp, mountPath: /tmp }]
+      volumes: [{ name: cache, emptyDir: {} }, { name: tmp, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: web, namespace: ctem }
+spec:
+  selector: { app: ctem-web }
+  ports: [{ port: 80, targetPort: 3000 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ctem
+  namespace: ctem
+spec:
+  tls: [{ hosts: [ctem.example.com], secretName: ctem-tls }]
+  rules:
+    - host: ctem.example.com
+      http:
+        paths: [{ path: /, pathType: Prefix, backend: { service: { name: web, port: { number: 80 } } } }]
+---
+# Only the web tier may call the API; only the API and workers reach the data stores.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: api-ingress, namespace: ctem }
+spec:
+  podSelector: { matchLabels: { app: ctem-api } }
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{ podSelector: { matchLabels: { app: ctem-web } } }]
+      ports: [{ port: 8000 }]

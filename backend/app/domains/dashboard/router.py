@@ -137,7 +137,7 @@ def ai_overview(db: Db, _: Principal = require("ai:read")) -> dict:
                Asset.exposure == "internet")).scalar_one()
     unapproved_providers = db.execute(
         select(AIAsset.provider, func.count()).join(Asset, Asset.id == AIAsset.asset_id)
-        .where(ACTIVE, AIAsset.provider.isnot(None), AIAsset.approval_status.in_(("unapproved", "unknown")))
+        .where(ACTIVE, AIAsset.provider.isnot(None), AIAsset.approval_status == "unapproved")
         .group_by(AIAsset.provider)).all()
     owasp = db.execute(select(AIFinding.owasp_llm, func.count()).join(Finding, Finding.id == AIFinding.finding_id)
                        .where(OPEN, AIFinding.owasp_llm.isnot(None)).group_by(AIFinding.owasp_llm)).all()

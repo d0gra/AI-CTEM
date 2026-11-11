@@ -60,3 +60,6 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-sans);
 dialog::backdrop { background: rgb(0 0 0 / 0.45); }
 .tabular { font-variant-numeric: tabular-nums; }
 .react-flow__attribution { display: none; }
+.react-flow__controls { box-shadow: none; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.react-flow__controls-button { background: var(--surface); border-bottom: 1px solid var(--border); color: var(--text); fill: var(--text); }
+.react-flow__controls-button:hover { background: var(--surface-2); }

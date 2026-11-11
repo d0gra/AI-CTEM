@@ -52,7 +52,7 @@ export function Graph({ nodes, edges, rootId, height = 420, onNodeClick }: {
       perColumn.set(column, row + 1);
       return {
         id: n.id,
-        position: { x: column * 250, y: row * 86 },
+        position: { x: column * 360, y: row * 86 },
         data: { label: (<div className="text-left"><div className="truncate text-xs font-medium">{n.label}</div>{n.sub && <div className="truncate text-[10px] opacity-70">{n.sub}</div>}</div>) },
         style: { width: 200, borderRadius: 8, border: `1.5px solid ${toneColor[n.tone ?? "muted"]}`, background: "var(--surface)", color: "var(--text)", padding: "6px 10px" },
         sourcePosition: "right" as Node["sourcePosition"],
