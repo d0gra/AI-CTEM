@@ -34,8 +34,30 @@ from app.models.asset import (
     SENSITIVITIES,
 )
 from app.models.finding import OPEN_STATUSES
+from app.workers.queue import JobContext, job_handler
 
 router = APIRouter(tags=["Assets"])
+
+
+@job_handler("assets.mark_stale")
+def mark_stale_job(job: JobContext, db) -> dict:
+    """Assets that automated discovery has not observed for CTEM_ASSET_STALE_DAYS are marked stale.
+
+    Manually registered assets are exempt. A stale asset becomes active again when re-observed."""
+    from datetime import timedelta
+
+    from app.core.config import get_settings
+
+    cutoff = utcnow() - timedelta(days=get_settings().asset_stale_days)
+    count = 0
+    for asset in db.execute(select(Asset).where(Asset.status == "active", Asset.last_seen_at < cutoff)).scalars():
+        if set(asset.discovery_sources) <= {"manual"}:
+            continue
+        asset.status = "stale"
+        db.add(AssetDiscoveryEvent(organization_id=asset.organization_id, asset_id=asset.id, event_type="stale", source="system",
+                                   details={"last_seen_at": asset.last_seen_at.isoformat()}, occurred_at=utcnow()))
+        count += 1
+    return {"marked_stale": count}
 
 SORTABLE = {"name": Asset.name, "type": Asset.type, "risk_score": Asset.risk_score,
             "last_seen_at": Asset.last_seen_at, "first_seen_at": Asset.first_seen_at, "exposure": Asset.exposure}
@@ -86,6 +108,8 @@ class AssetIn(BaseModel):
 
 
 class AssetPatch(BaseModel):
+    """Analyst-controlled classification. Tags are free-form labels (max 30, 64 characters each)."""
+
     name: str | None = Field(default=None, min_length=1, max_length=512)
     description: str | None = None
     environment: Literal[ENVIRONMENTS] | None = None  # type: ignore[valid-type]

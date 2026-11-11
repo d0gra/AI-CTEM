@@ -58,7 +58,8 @@ class AnalyticsSettings(BaseModel):
     enabled: bool = False
     integration_id: uuid.UUID | None = None
     monthly_token_budget: int = Field(default=2_000_000, ge=10_000, le=500_000_000)
-    max_output_tokens: int = Field(default=2000, ge=256, le=16000)
+    # Includes the model's thinking, which counts toward the output limit.
+    max_output_tokens: int = Field(default=8000, ge=1024, le=16000)
     effort: str = Field(default="medium", pattern="^(low|medium|high)$")
     # Explicit organizational authorization to include stored evidence content in prompts sent to the provider.
     share_evidence_with_provider: bool = False
@@ -105,21 +106,35 @@ def analyse(db: Session, principal: Principal, *, purpose: str, entity_type: str
     if not settings.enabled or settings.integration_id is None:
         raise Conflict("AI-assisted analysis is not enabled for this organization")
     integration = db.get(Integration, settings.integration_id)
-    if integration is None or integration.connector != "llm" or not integration.enabled:
+    if integration is None or integration.connector not in ("claude", "llm") or not integration.enabled:
         raise Conflict("The configured AI analysis provider is missing or disabled")
     usage = month_usage(db)
     if usage["tokens"] >= settings.monthly_token_budget:
         raise Conflict("The monthly AI analysis token budget is exhausted", details=usage)
-    config = LlmConfig.model_validate(integration.config)
-    if client is None:
-        creds = LlmCredentials.model_validate(json.loads(decrypt_secret(integration.credentials_encrypted)) if integration.credentials_encrypted else {})
-        client = (AnthropicClient(config, creds, effort=settings.effort, refusal_fallback=True) if config.api_style == "anthropic"
-                  else build_client(config, creds))
+    secrets = json.loads(decrypt_secret(integration.credentials_encrypted)) if integration.credentials_encrypted else {}
+    if integration.connector == "claude":
+        from app.integrations.llm import claude
+
+        cconfig = claude.ClaudeConfig.model_validate(integration.config)
+        provider, model_name = "anthropic", cconfig.model
+        if client is None:
+            try:
+                sdk = claude.make_client(cconfig, claude.ClaudeCredentials.model_validate(secrets))
+            except ApiError as exc:
+                raise Conflict(str(exc)) from exc
+            client = AnthropicClient(None, None, client=sdk, model=cconfig.model, effort=cconfig.effort, refusal_fallback=True)
+    else:
+        config = LlmConfig.model_validate(integration.config)
+        provider, model_name = config.api_style, config.model
+        if client is None:
+            creds = LlmCredentials.model_validate(secrets)
+            client = (AnthropicClient(config, creds, effort=settings.effort, refusal_fallback=True) if config.api_style == "anthropic"
+                      else build_client(config, creds))
     if not settings.share_evidence_with_provider:
         facts = {k: v for k, v in facts.items() if k != "evidence"}
     document = json.dumps(redact(facts), default=str)[:60000]
     prompt = f"Task: {purpose}\n\n<platform_data>\n{document}\n</platform_data>"
-    record = AIUsage(organization_id=principal.organization_id, user_id=principal.user_id, provider=config.api_style, model=config.model,
+    record = AIUsage(organization_id=principal.organization_id, user_id=principal.user_id, provider=provider, model=model_name,
                      purpose=purpose[:48], prompt_version=PROMPT_VERSION, entity_type=entity_type, entity_id=entity_id, status="error",
                      input_tokens=0, output_tokens=0, cost_usd_micros=0, created_at=utcnow())
     analysis, error, last = None, None, None
@@ -131,6 +146,9 @@ def analyse(db: Session, principal: Principal, *, purpose: str, entity_type: str
             if last.refused:
                 error = "The provider declined to analyse this content"
                 break
+            if last.truncated:
+                error = "The response reached the output limit; raise the maximum output tokens"
+                break
             try:
                 analysis = _parse(last.text)
                 break
@@ -141,10 +159,10 @@ def analyse(db: Session, principal: Principal, *, purpose: str, entity_type: str
         db.add(record)
         db.commit()
         raise UpstreamError(error, details={"error": str(exc)[:300]}) from exc
-    price = PRICES.get(last.model if last and last.model in PRICES else config.model)
+    price = PRICES.get(last.model if last and last.model in PRICES else model_name)
     if price:
         record.cost_usd_micros = int(record.input_tokens * price[0] + record.output_tokens * price[1])
-    record.model = (last.model if last and last.model else config.model)[:120]
+    record.model = (last.model if last and last.model else model_name)[:120]
     record.status = "ok" if analysis else "invalid_output"
     db.add(record)
     db.flush()

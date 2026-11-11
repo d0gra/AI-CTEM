@@ -1,15 +1,12 @@
 """Connector framework.
 
-A connector describes one external system: its configuration and credential schemas, a
-connection test, and an honest implementation status:
+A connector describes one external system: how the platform reaches it, its configuration and
+credential schemas, and a connection test. `mode` says how the system is used:
 
-  available     implemented and exercised by automated tests (fixtures or local execution)
-  import_only   results produced by the tool are ingested from files; the platform does not
-                call the system directly
-  reference     no credentials needed; a public data source synchronised by workers
-
-`live_validated` is false for connectors whose tests use controlled fixtures only because no
-real account or binary was available when the connector was built.
+  connection   the platform calls the system's API with stored credentials
+  tool         workers execute the tool locally; its reports can also be uploaded
+  upload       reports produced by the tool are uploaded and normalised
+  feed         a public data source that workers synchronise; nothing to configure
 """
 
 import time
@@ -40,8 +37,8 @@ class ConnectorSpec:
     name: str
     category: str  # scanner | cloud | repository | ai | threat_intel | ticketing | notification
     description: str
-    status: str = "available"
-    live_validated: bool = False
+    mode: str = "connection"  # connection | tool | upload | feed
+    import_format: str | None = None  # scanner-import format accepted for this tool's reports
     config_model: type[BaseModel] = NoSettings
     credentials_model: type[BaseModel] = NoSettings
     test: Callable[..., ConnectionResult] | None = None

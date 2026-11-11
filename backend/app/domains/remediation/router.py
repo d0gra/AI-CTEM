@@ -37,6 +37,9 @@ def sla_check_job(job: JobContext, db) -> dict:
                title=f"Remediation SLA breached: {finding.title}",
                body=f"Due {finding.due_at:%Y-%m-%d}; risk level {finding.risk_level}.", entity_type="finding",
                entity_id=finding.id)
+        for task in db.execute(select(RemediationTask).where(RemediationTask.finding_id == finding.id,
+                                                             RemediationTask.status.in_(("open", "in_progress")))).scalars():
+            task.overdue_notified_at = now
     return {"overdue": count}
 
 

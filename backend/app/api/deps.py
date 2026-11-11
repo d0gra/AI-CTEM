@@ -66,11 +66,19 @@ def get_principal(request: Request) -> Principal:
         user = db.get(User, session.user_id)
         if user is None or not user.is_active or user.organization_id != session.organization_id:
             raise Unauthorized("Account is disabled")
+        from app.models import Organization
+
+        org = db.get(Organization, user.organization_id)
+        if org is None or not org.is_active:
+            raise Unauthorized("This organization has been suspended")
         # Cookie-authenticated state-changing requests must present the session's CSRF token.
         if via_cookie and request.method not in SAFE_METHODS:
             supplied = request.headers.get("x-csrf-token", "")
             if not supplied or not constant_time_equal(supplied, session.csrf_token):
                 raise Forbidden("CSRF token missing or invalid")
+        if (settings.require_email_verification and user.email_verified_at is None
+                and not request.url.path.startswith("/api/v1/auth/")):
+            raise Forbidden("Verify your email address to continue", details={"email_unverified": True})
         if now - session.last_seen_at > timedelta(seconds=60):
             session.last_seen_at = now
         principal = Principal(

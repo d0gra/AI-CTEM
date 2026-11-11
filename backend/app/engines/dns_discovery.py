@@ -202,7 +202,7 @@ def run(ctx: EngineContext) -> None:
 
 
 register(EngineSpec(
-    kind="dns_discovery", name="Domain and subdomain discovery", module="attack_surface", run=run,
+    kind="dns_discovery", permission="discovery:run", name="Domain and subdomain discovery", module="attack_surface", run=run,
     description="Enumerates DNS records and subdomains from DNS and certificate transparency; flags email "
                 "spoofing weaknesses and dangling records.",
     config_model=DnsDiscoveryConfig, target_kinds=("domain",), active=False,

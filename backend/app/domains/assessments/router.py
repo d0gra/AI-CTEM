@@ -12,7 +12,7 @@ from app.core.errors import NotFound, ValidationFailed
 from app.core.security import sha256_hex
 from app.db.base import utcnow
 from app.domains.assessments import service
-from app.models import Assessment, AssessmentRun, AssessmentTarget, Asset, Job
+from app.models import Assessment, AssessmentRun, AssessmentTarget, Job
 from app.workers.queue import request_cancel
 
 router = APIRouter(tags=["Assessments"])
@@ -54,7 +54,7 @@ def _out(db: Db, a: Assessment) -> dict:
                       .order_by(AssessmentRun.created_at.desc()).limit(1)).scalar_one_or_none()
     spec = service.ENGINES.get(a.kind)
     return {"id": a.id, "name": a.name, "kind": a.kind, "module": spec.module if spec else None,
-            "active": spec.active if spec else None, "config": a.config, "integration_id": a.integration_id,
+            "active": spec.active if spec else None, "permission": spec.permission if spec else None, "config": a.config, "integration_id": a.integration_id,
             "schedule_interval_minutes": a.schedule_interval_minutes, "next_run_at": a.next_run_at,
             "enabled": a.enabled, "created_at": a.created_at,
             "targets": [{"kind": t.kind, "value": t.value, "asset_id": t.asset_id} for t in targets],
@@ -69,12 +69,21 @@ def _get(db: Db, assessment_id: uuid.UUID) -> Assessment:
 
 
 def _permission_for(kind: str) -> str:
-    return "ai_redteam:run" if kind == "ai_redteam" else "assessments:run"
+    spec = service.ENGINES.get(kind)
+    return spec.permission if spec else "assessments:run"
+
+
+def _require_engine_permission(principal: Principal, kind: str) -> None:
+    needed = _permission_for(kind)
+    if not principal.has(needed):
+        from app.core.errors import Forbidden
+
+        raise Forbidden("You do not have permission to run this kind of assessment", details={"missing": [needed]})
 
 
 @router.get("/assessments/engines")
 def list_engines(_: Principal = require("assessments:read")) -> list[dict]:
-    return [{"kind": s.kind, "name": s.name, "description": s.description, "module": s.module, "active": s.active,
+    return [{"kind": s.kind, "name": s.name, "description": s.description, "module": s.module, "active": s.active, "permission": s.permission,
              "target_kinds": list(s.target_kinds), "requires_connector": s.requires_connector,
              "tool": service.tool_status(s), "config_schema": s.config_model.model_json_schema()}
             for s in sorted(service.ENGINES.values(), key=lambda s: (s.module, s.name))]
@@ -94,7 +103,8 @@ def list_assessments(db: Db, paging: Paging, _: Principal = require("assessments
 
 
 @router.post("/assessments", status_code=201)
-def create_assessment(body: AssessmentIn, db: Db, principal: Principal = require("assessments:run")) -> dict:
+def create_assessment(body: AssessmentIn, db: Db, principal: Principal = require("assessments:read")) -> dict:
+    _require_engine_permission(principal, body.kind)
     if body.kind == "ai_redteam":
         raise ValidationFailed("AI red team assessments are created through /ai-redteam/assessments")
     spec, config, targets = service.validate_definition(
@@ -107,26 +117,11 @@ def create_assessment(body: AssessmentIn, db: Db, principal: Principal = require
     db.add(a)
     db.flush()
     for t in targets:
-        asset_id = None
-        if t["kind"] == "asset":
-            asset = db.get(Asset, uuid.UUID(t["value"])) if _is_uuid(t["value"]) else None
-            if asset is None:
-                raise ValidationFailed("Target asset does not exist")
-            asset_id = asset.id
-        db.add(AssessmentTarget(organization_id=a.organization_id, assessment_id=a.id, kind=t["kind"],
-                                value=t["value"], asset_id=asset_id))
+        db.add(AssessmentTarget(organization_id=a.organization_id, assessment_id=a.id, kind=t["kind"], value=t["value"]))
     db.flush()
     audit_event(db, principal, "assessment.created", entity_type="assessment", entity_id=a.id,
                 data={"kind": a.kind, "active": spec.active, "targets": [t["value"] for t in targets]})
     return _out(db, a)
-
-
-def _is_uuid(value: str) -> bool:
-    try:
-        uuid.UUID(value)
-        return True
-    except ValueError:
-        return False
 
 
 @router.get("/assessments/{assessment_id}")
@@ -136,8 +131,9 @@ def get_assessment(assessment_id: uuid.UUID, db: Db, _: Principal = require("ass
 
 @router.patch("/assessments/{assessment_id}")
 def update_assessment(assessment_id: uuid.UUID, body: AssessmentPatch, db: Db,
-                      principal: Principal = require("assessments:run")) -> dict:
+                      principal: Principal = require("assessments:read")) -> dict:
     a = _get(db, assessment_id)
+    _require_engine_permission(principal, a.kind)
     if body.name:
         a.name = body.name
     if body.enabled is not None:
@@ -152,8 +148,13 @@ def update_assessment(assessment_id: uuid.UUID, body: AssessmentPatch, db: Db,
 
 
 @router.delete("/assessments/{assessment_id}", status_code=204)
-def delete_assessment(assessment_id: uuid.UUID, db: Db, principal: Principal = require("assessments:run")) -> None:
+def delete_assessment(assessment_id: uuid.UUID, db: Db, principal: Principal = require("assessments:read")) -> None:
     a = _get(db, assessment_id)
+    _require_engine_permission(principal, a.kind)
+    if db.execute(select(AssessmentRun.id).where(AssessmentRun.assessment_id == a.id, AssessmentRun.status.in_(("queued", "running")))).first():
+        from app.core.errors import Conflict
+
+        raise Conflict("Cancel the running assessment before deleting it")
     db.delete(a)
     audit_event(db, principal, "assessment.deleted", entity_type="assessment", entity_id=assessment_id)
 
@@ -161,11 +162,7 @@ def delete_assessment(assessment_id: uuid.UUID, db: Db, principal: Principal = r
 @router.post("/assessments/{assessment_id}/run", status_code=202)
 def run_assessment(assessment_id: uuid.UUID, body: RunIn, db: Db, principal: Principal = require("assessments:read")) -> dict:
     a = _get(db, assessment_id)
-    needed = _permission_for(a.kind)
-    if not principal.has(needed):
-        from app.core.errors import Forbidden
-
-        raise Forbidden("You do not have permission to run this assessment", details={"missing": [needed]})
+    _require_engine_permission(principal, a.kind)
     if a.kind == "ai_redteam":
         from app.engines.ai_redteam.runner import assert_authorization_current
 

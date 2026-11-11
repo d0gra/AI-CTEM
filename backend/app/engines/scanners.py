@@ -362,7 +362,7 @@ def run_import(ctx: EngineContext) -> None:
 
 register(EngineSpec(kind="scanner_import", name="Scanner result import", module="vulnerabilities", run=run_import,
                     description="Parses an uploaded scanner report and normalises its findings.", config_model=ImportConfig))
-register(EngineSpec(kind="nmap_scan", name="Network service discovery (Nmap)", module="attack_surface", run=run_nmap,
+register(EngineSpec(kind="nmap_scan", permission="discovery:run", name="Network service discovery (Nmap)", module="attack_surface", run=run_nmap,
                     description="TCP connect scan with optional service detection; flags exposed administrative, database and AI services.",
                     config_model=NmapConfig, target_kinds=("domain", "cidr"), active=True, requires_tool="nmap"))
 register(EngineSpec(kind="nuclei_scan", name="Template-based vulnerability scan (Nuclei)", module="vulnerabilities", run=run_nuclei,
@@ -373,20 +373,20 @@ for _tool, _spec in PATH_TOOLS.items():
                         description=_spec["description"], target_kinds=("path",), requires_tool=_tool))
 
 _SCANNERS = [
-    ("nmap", "Nmap", "available", True, "Executed by workers (TCP connect scan); XML reports can also be imported."),
-    ("nuclei", "Nuclei", "available", True, "Executed by workers; JSON/JSONL exports can also be imported."),
-    ("trivy", "Trivy", "available", False, "Filesystem scans executed by workers when the binary is installed; JSON reports (including image scans) can be imported."),
-    ("grype", "Grype", "available", False, "Directory scans executed by workers when installed; JSON reports can be imported."),
-    ("semgrep", "Semgrep", "available", False, "Executed by workers when installed; JSON reports can be imported."),
-    ("gitleaks", "Gitleaks", "available", False, "Executed by workers when installed; JSON reports can be imported."),
-    ("checkov", "Checkov", "available", False, "Executed by workers when installed; JSON reports can be imported."),
-    ("zap", "OWASP ZAP", "import_only", False, "Traditional JSON reports are imported; the platform does not drive ZAP."),
-    ("prowler", "Prowler", "import_only", False, "OCSF JSON output is imported; covers AWS, Azure, GCP and Kubernetes checks."),
-    ("sarif", "SARIF 2.1.0", "import_only", False, "Generic import for any tool that emits SARIF."),
-    ("sbom", "CycloneDX / SPDX SBOM", "import_only", False, "Components are inventoried and checked against OSV."),
+    ("nmap", "Nmap", "tool", "TCP service discovery run by workers against authorized networks. Nmap XML reports can also be uploaded."),
+    ("nuclei", "Nuclei", "tool", "Template-based vulnerability scanning run by workers against authorized URLs. JSON/JSONL exports can also be uploaded."),
+    ("trivy", "Trivy", "tool", "Dependency, IaC and secret scanning of source trees run by workers. JSON reports, including container image scans, can be uploaded."),
+    ("grype", "Grype", "tool", "Package vulnerability scanning of source trees run by workers. JSON reports can be uploaded."),
+    ("semgrep", "Semgrep", "tool", "Static analysis of application source run by workers. JSON reports can be uploaded."),
+    ("gitleaks", "Gitleaks", "tool", "Secret detection in source trees run by workers; secret values are never stored. JSON reports can be uploaded."),
+    ("checkov", "Checkov", "tool", "Terraform, CloudFormation, Kubernetes and Dockerfile checks run by workers. JSON reports can be uploaded."),
+    ("zap", "OWASP ZAP", "upload", "Upload ZAP traditional JSON reports from baseline, full or API scans."),
+    ("prowler", "Prowler", "upload", "Upload Prowler OCSF JSON output. Covers AWS, Azure, Google Cloud and Kubernetes posture checks."),
+    ("sarif", "SARIF", "upload", "Upload SARIF 2.1.0 results from any static or dynamic analysis tool."),
+    ("sbom", "Software bill of materials", "upload", "Upload CycloneDX or SPDX JSON; components are inventoried and checked against OSV."),
 ]
-for _key, _name, _status, _validated, _desc in _SCANNERS:
-    register_connector(ConnectorSpec(key=_key, name=_name, category="scanner", description=_desc, status=_status,
-                                     live_validated=_validated, configurable=False))
+for _key, _name, _mode, _desc in _SCANNERS:
+    register_connector(ConnectorSpec(key=_key, name=_name, category="scanner", description=_desc, mode=_mode,
+                                     import_format=_key, configurable=False))
 
 __all__ = ["analyse_components", "ingest_parsed", "record_network_services", "run_tool", "shutil"]

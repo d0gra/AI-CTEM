@@ -15,6 +15,7 @@ from sqlalchemy.exc import DataError, DBAPIError, IntegrityError
 
 from app.api.router import api_router
 from app.core import ratelimit
+from app.core.clientip import client_ip
 from app.core.config import get_settings
 from app.core.context import RequestContext, set_request_context
 from app.core.errors import AppError, RateLimited
@@ -76,7 +77,7 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def request_middleware(request: Request, call_next):
         request_id = request.headers.get("x-request-id", "")[:64] or uuid.uuid4().hex
-        ip = request.client.host if request.client else None
+        ip = client_ip(request)
         set_request_context(RequestContext(request_id=request_id, ip_address=ip,
                                            user_agent=request.headers.get("user-agent")))
         structlog.contextvars.clear_contextvars()

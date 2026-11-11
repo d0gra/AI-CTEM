@@ -360,7 +360,7 @@ def run(ctx: EngineContext) -> None:
 
 
 register(EngineSpec(
-    kind="repository_analysis", name="Repository AI and supply-chain analysis", module="ai_security", run=run,
+    kind="repository_analysis", permission="discovery:run", name="Repository AI and supply-chain analysis", module="ai_security", run=run,
     description="Discovers AI providers, frameworks, vector databases and MCP servers used by a codebase; detects committed AI "
                 "credentials; reviews MCP client configuration; inspects model artifacts; checks pinned dependencies against OSV.",
     config_model=RepositoryConfig, target_kinds=("path",),

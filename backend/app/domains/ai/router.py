@@ -38,7 +38,7 @@ from app.models import (
 )
 from app.models.ai import APPROVAL_STATES, AUTONOMY_LEVELS
 from app.models.asset import AI_ASSET_TYPES
-from app.models.finding import AI_DOMAINS, OPEN_STATUSES
+from app.models.finding import OPEN_STATUSES
 
 router = APIRouter(tags=["AI Security"])
 
@@ -400,12 +400,3 @@ def run_tests(run_id: uuid.UUID, db: Db, _: Principal = require("ai:read", "find
              "retest_result": t.retest_result, "finding_id": t.finding_id, "executed_at": t.executed_at,
              "evidence": ev.content if ev else None} for t, ev in rows]
 
-
-@router.get("/ai/findings-summary")
-def ai_findings_summary(db: Db, _: Principal = require("ai:read")) -> dict:
-    rows = db.execute(select(Finding.domain, Finding.risk_level, func.count()).where(Finding.domain.in_(AI_DOMAINS), Finding.status.in_(OPEN_STATUSES))
-                      .group_by(Finding.domain, Finding.risk_level)).all()
-    out: dict = {}
-    for domain, level, count in rows:
-        out.setdefault(domain, {})[level] = count
-    return out

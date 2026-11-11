@@ -23,8 +23,7 @@ class Integration(Base, IdMixin, TenantMixin, TimestampMixin):
     last_checked_at: Mapped[datetime | None]
     last_error: Mapped[str | None] = mapped_column(Text)
     last_error_class: Mapped[str | None] = mapped_column(String(24))
-    last_sync_at: Mapped[datetime | None]
-    sync_cursor: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    last_sync_at: Mapped[datetime | None]  # last successful assessment that used this integration
 
 
 class Notification(Base, IdMixin, TenantMixin):

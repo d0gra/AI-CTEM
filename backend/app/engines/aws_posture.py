@@ -404,11 +404,6 @@ register_connector(ConnectorSpec(
     test=test_connection, description="Read-only posture assessment of IAM, S3, EC2, RDS, CloudTrail, KMS and EKS.",
     required_permissions="AWS managed policies SecurityAudit and ViewOnlyAccess (read-only). Optional sts:AssumeRole into a target role.",
 ))
-for _key, _name in (("azure", "Microsoft Azure"), ("gcp", "Google Cloud Platform")):
-    register_connector(ConnectorSpec(
-        key=_key, name=_name, category="cloud", status="import_only", configurable=False,
-        description="No native connector. Posture findings are ingested from Prowler OCSF output (scanner import, format 'prowler').",
-        required_permissions="Run Prowler with the provider's read-only reader role and upload the OCSF JSON."))
 register(EngineSpec(
     kind="aws_posture", name="AWS security posture", module="cloud", run=run, requires_connector="aws",
     description="Read-only assessment of IAM, S3, EC2, RDS, CloudTrail, KMS and EKS; builds identity and permission relationships.",

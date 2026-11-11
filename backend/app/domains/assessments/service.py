@@ -45,6 +45,7 @@ class EngineSpec:
     requires_tool: str | None = None  # external binary
     requires_connector: str | None = None  # integration connector key
     version_args: tuple[str, ...] = ("--version",)
+    permission: str = "assessments:run"  # needed to create and run assessments of this kind
 
 
 ENGINES: dict[str, EngineSpec] = {}
@@ -225,6 +226,9 @@ def run_assessment_job(job: JobContext, db: Session) -> dict:
         reconciliation = findings.reconcile_unobserved(
             db, source=spec.kind, asset_ids=ctx.complete_assets, observed=ctx.observed_findings, run_id=run.id)
         risk.refresh_asset_risk(db, ctx.touched_assets)
+    if integration is not None and not run.dry_run:
+        integration.last_sync_at, integration.health = utcnow(), "healthy"
+        integration.last_error = integration.last_error_class = None
     run.status, run.finished_at = "succeeded", utcnow()
     run.summary = {**ctx.stats, **reconciliation, "dry_run": run.dry_run, "plan": ctx.plan[:500],
                    "tool_version": tool["version"]}

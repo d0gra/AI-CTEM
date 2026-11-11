@@ -38,7 +38,7 @@ def expire_acceptances_job(job: JobContext, db) -> dict:
             findings.add_event(db, finding, "status_changed", {"from": "accepted_risk", "to": "triaged",
                                                                "reason": "Risk acceptance expired"})
             service.score_finding(db, finding)
-            notify(db, organization_id=job.organization_id, event_type="risk.acceptance_requested", severity="medium",
+            notify(db, organization_id=job.organization_id, event_type="risk.acceptance_expired", severity="medium",
                    title=f"Risk acceptance expired: {finding.title}", entity_type="finding", entity_id=finding.id)
         expired += 1
     return {"expired": expired}

@@ -25,6 +25,7 @@ EVENT_TYPES = {
     "integration.failed": "Integration failure",
     "job.failed": "Background job failed",
     "risk.acceptance_requested": "Risk acceptance requested",
+    "risk.acceptance_expired": "Risk acceptance expired",
 }
 SEVERITY_RANK = {"info": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
 

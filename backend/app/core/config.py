@@ -13,8 +13,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_prefix="CTEM_", extra="ignore")
 
     env: Literal["development", "test", "production"] = "development"
-    demo_mode: bool = False
     allow_registration: bool = True
+    # Block everything except account endpoints until the user has verified their email address.
+    require_email_verification: bool = False
 
     # Database: the API and workers connect as a non-owner role that is subject to RLS.
     database_url: str = "postgresql+psycopg://ctem_app:ctem_app_dev@127.0.0.1:54329/ctem"
@@ -36,6 +37,8 @@ class Settings(BaseSettings):
     lockout_minutes: int = 15
 
     cors_origins: list[str] = Field(default_factory=list)
+    # Comma-separated CIDRs of reverse proxies allowed to report the client address in X-Forwarded-For.
+    trusted_proxies: str = "127.0.0.1/32,::1/128"
     public_base_url: str = "http://localhost:3000"
 
     # Rate limiting (requests per minute)
@@ -80,12 +83,17 @@ class Settings(BaseSettings):
     job_max_attempts: int = 3
     job_stale_after_seconds: int = 300
     max_running_jobs_per_org: int = 4
+    asset_stale_days: int = 30
+
+    # Claude for AI-assisted analysis. When enabled, organizations may use the Claude credentials of the
+    # API/worker host (ANTHROPIC_API_KEY, an `ant auth login` profile, or workload identity federation)
+    # instead of storing an API key. Leave off on shared multi-tenant deployments: usage is billed to the operator.
+    allow_server_claude_credentials: bool = False
 
     # Observability
     log_level: str = "INFO"
     log_json: bool = True
     otel_exporter_otlp_endpoint: str = ""
-    sentry_dsn: str = ""
 
     @property
     def is_production(self) -> bool:
@@ -101,8 +109,6 @@ class Settings(BaseSettings):
                 problems.append("CTEM_ENCRYPTION_KEYS must be set")
             if not self.cookie_secure:
                 problems.append("CTEM_COOKIE_SECURE must be true")
-            if self.demo_mode:
-                problems.append("CTEM_DEMO_MODE must not be enabled")
             if self.allow_private_webhooks:
                 problems.append("CTEM_ALLOW_PRIVATE_WEBHOOKS must not be enabled")
             if problems:

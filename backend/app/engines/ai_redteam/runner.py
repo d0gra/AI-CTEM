@@ -171,7 +171,7 @@ def run(ctx: EngineContext) -> None:
 
 
 register(EngineSpec(
-    kind="ai_redteam", name="AI red team assessment", module="ai_redteam", run=run, config_model=RedTeamConfig, active=True,
+    kind="ai_redteam", name="AI red team assessment", permission="ai_redteam:run", module="ai_redteam", run=run, config_model=RedTeamConfig, active=True,
     description="Deterministic adversarial tests against an LLM endpoint or AI application: prompt injection, indirect injection, "
                 "system prompt and data disclosure, unsafe output, tool authorization, retrieval and tenant isolation.",
     requires_connector=None,

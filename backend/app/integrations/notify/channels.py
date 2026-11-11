@@ -132,7 +132,7 @@ def _tester(sender):
 
 register_connector(ConnectorSpec(
     key="webhook", name="Webhook", category="notification", config_model=WebhookConfig,
-    credentials_model=WebhookCredentials, live_validated=True,
+    credentials_model=WebhookCredentials,
     description="POSTs notification JSON to an HTTPS endpoint, optionally signed with HMAC-SHA256.",
     test=_tester(lambda url, creds, n: send_webhook(url, getattr(creds, "signing_secret", ""), n)),
 ))

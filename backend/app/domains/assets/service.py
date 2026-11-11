@@ -117,6 +117,12 @@ def upsert_asset(
             organization_id=org_id, asset_id=asset.id, event_type="discovered" if created else "changed",
             source=source, job_id=job_id, actor_user_id=actor_user_id, details=changes, occurred_at=now,
         ))
+        if created and asset.exposure == "internet" and source != "manual":
+            from app.domains.notifications.service import notify
+
+            notify(db, organization_id=org_id, event_type="asset.discovered", severity="medium",
+                   title=f"New internet-exposed asset: {asset.name}", body=f"{asset.type} discovered by {source}",
+                   entity_type="asset", entity_id=asset.id)
         if changes.get("exposure", [None, None])[1] == "internet":
             from app.domains.notifications.service import notify
 

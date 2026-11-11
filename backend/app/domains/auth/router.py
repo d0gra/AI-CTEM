@@ -29,6 +29,8 @@ class LoginIn(BaseModel):
 
 
 class UserOut(BaseModel):
+    email_verified: bool = False
+    email_verification_required: bool = False
     id: uuid.UUID
     organization_id: uuid.UUID
     email: str
@@ -127,7 +129,14 @@ def logout(response: Response, db: Db, principal: CurrentUser) -> None:
 
 @router.get("/me", response_model=UserOut)
 def me(principal: Principal = Depends(get_principal)) -> UserOut:
+    from app.db.session import system_session
+    from app.models import User
+
+    with system_session() as db:
+        user = db.get(User, principal.user_id)
+        verified = bool(user and user.email_verified_at)
     return UserOut(
+        email_verified=verified, email_verification_required=get_settings().require_email_verification,
         id=principal.user_id, organization_id=principal.organization_id, email=principal.email,
         full_name=principal.full_name, role=principal.role_key, permissions=sorted(principal.permissions),
         mfa_enabled=principal.mfa_enabled, mfa_verified=principal.mfa_verified,
@@ -197,6 +206,18 @@ def password_forgot(body: EmailIn) -> dict:
 @router.post("/password/reset", status_code=204)
 def password_reset(body: ResetIn) -> None:
     service.reset_password(body.token, body.new_password)
+
+
+@router.post("/email/resend", status_code=202)
+def email_resend(principal: Principal = Depends(get_principal)) -> dict:
+    from app.db.session import tenant_session
+    from app.models import User
+
+    with tenant_session(principal.organization_id) as db:
+        user = db.get(User, principal.user_id)
+        if user is not None and user.email_verified_at is None:
+            service.issue_email_verification(db, user)
+    return {"detail": "If your address is not yet verified, a new link has been sent."}
 
 
 @router.post("/email/verify", status_code=204)

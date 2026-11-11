@@ -70,7 +70,7 @@ def catalog(db: Db, _: Principal = require("integrations:read")) -> list[dict]:
     out = []
     for spec in sorted(CONNECTORS.values(), key=lambda s: (s.category, s.name)):
         entry = {"key": spec.key, "name": spec.name, "category": spec.category, "description": spec.description,
-                 "status": spec.status, "live_validated": spec.live_validated, "configurable": spec.configurable,
+                 "mode": spec.mode, "import_format": spec.import_format, "configurable": spec.configurable,
                  "required_permissions": spec.required_permissions,
                  "config_schema": spec.config_model.model_json_schema() if spec.configurable else None,
                  "credentials_schema": spec.credentials_model.model_json_schema() if spec.configurable else None}

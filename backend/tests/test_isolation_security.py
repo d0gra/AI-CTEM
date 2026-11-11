@@ -233,6 +233,6 @@ def test_production_configuration_refuses_unsafe_defaults():
 
     with pytest.raises(ValidationError, match="CTEM_SECRET_KEY"):
         Settings(env="production")
-    with pytest.raises(ValidationError, match="CTEM_DEMO_MODE"):
-        Settings(env="production", secret_key="x" * 40, encryption_keys="k", demo_mode=True, cookie_secure=True)
+    with pytest.raises(ValidationError, match="CTEM_COOKIE_SECURE"):
+        Settings(env="production", secret_key="x" * 40, encryption_keys="k", cookie_secure=False)
     assert Settings(env="production", secret_key="x" * 40, encryption_keys="k", cookie_secure=True).is_production

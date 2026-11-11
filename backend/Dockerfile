@@ -15,7 +15,8 @@ FROM base AS api
 USER 10001
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3).status == 200 else 1)"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# Client addresses are taken from X-Forwarded-For only when the peer is in CTEM_TRUSTED_PROXIES.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]
 
 # Worker: adds the scanners that engines execute. Other scanners (nuclei, trivy, grype, semgrep,
 # gitleaks, checkov) are optional; install them in a derived image to enable their engines.

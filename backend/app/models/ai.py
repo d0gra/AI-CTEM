@@ -41,7 +41,6 @@ class AIModel(Base, TenantMixin, TimestampMixin):
     size_bytes: Mapped[int | None] = mapped_column(Integer)
     provenance_verified: Mapped[bool | None] = mapped_column(Boolean)
     provenance_detail: Mapped[str] = mapped_column(Text, default="", server_default="")
-    license: Mapped[str | None] = mapped_column(String(120))
     last_scanned_at: Mapped[datetime | None]
 
 

@@ -317,5 +317,5 @@ for _key, _name, _desc in (
     ("mitre_attack", "MITRE ATT&CK (Enterprise)", "Tactics, techniques and mitigations from the official STIX bundle."),
     ("mitre_atlas", "MITRE ATLAS", "Adversarial ML tactics, techniques, mitigations and case studies."),
 ):
-    register_connector(ConnectorSpec(key=_key, name=_name, category="threat_intel", description=_desc, status="reference",
-                                     configurable=False, live_validated=False))
+    register_connector(ConnectorSpec(key=_key, name=_name, category="threat_intel", description=_desc, mode="feed",
+                                     configurable=False))

@@ -35,6 +35,7 @@ class ChatResult:
     input_tokens: int = 0
     output_tokens: int = 0
     refused: bool = False
+    truncated: bool = False
     model: str = ""
     headers: dict = field(default_factory=dict)
 
@@ -131,12 +132,14 @@ class AnthropicClient:
     # Models for which a safety-classifier refusal can be retried server-side on a fallback model.
     FALLBACK_MODELS = ("claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "claude-fable-5-2", "claude-fable-5-1")
 
-    def __init__(self, config: LlmConfig, creds: LlmCredentials, allow_private: bool = False, effort: str | None = None,
-                 refusal_fallback: bool = False):
-        self.endpoint, self.model, self.effort = ANTHROPIC_API_URL, config.model or DEFAULT_CLAUDE_MODEL, effort
+    def __init__(self, config: LlmConfig | None, creds: LlmCredentials | None, allow_private: bool = False, effort: str | None = None,
+                 refusal_fallback: bool = False, client: anthropic.Anthropic | None = None, model: str | None = None):
+        self.endpoint = ANTHROPIC_API_URL
+        self.model = model or (config.model if config else None) or DEFAULT_CLAUDE_MODEL
+        self.effort = effort
         # Used only for the platform's own analysis. Red-team targets must answer as the model under test.
         self.refusal_fallback = refusal_fallback and self.model in self.FALLBACK_MODELS
-        self.client = anthropic.Anthropic(api_key=creds.api_key, max_retries=2, timeout=120.0)
+        self.client = client or anthropic.Anthropic(api_key=creds.api_key if creds else "", max_retries=2, timeout=120.0)
 
     def chat(self, user, *, system=None, tools=None, max_tokens=1024) -> ChatResult:
         params: dict = {"model": self.model, "max_tokens": max_tokens, "messages": [{"role": "user", "content": user}]}
@@ -166,7 +169,7 @@ class AnthropicClient:
         text = "".join(block.text for block in response.content if block.type == "text")
         calls = [{"name": block.name, "arguments": json.dumps(block.input)[:500]} for block in response.content if block.type == "tool_use"]
         return ChatResult(text=text, tool_calls=calls, input_tokens=response.usage.input_tokens, output_tokens=response.usage.output_tokens,
-                          refused=response.stop_reason == "refusal", model=response.model)
+                          refused=response.stop_reason == "refusal", model=response.model, truncated=response.stop_reason == "max_tokens")
 
 
 class GeminiClient:
@@ -243,14 +246,9 @@ def test_llm(config: LlmConfig, creds: LlmCredentials) -> ConnectionResult:
 
 
 register_connector(ConnectorSpec(
-    key="llm", name="LLM endpoint (OpenAI-compatible, Anthropic, Gemini, custom HTTP)", category="ai", config_model=LlmConfig,
+    key="llm", name="Model endpoint (red-team target)", category="ai", config_model=LlmConfig,
     credentials_model=LlmCredentials, test=test_llm,
-    description="A model API or AI application endpoint. Used as an AI red-team target and, when selected in AI analytics settings, "
-                "as the provider for AI-assisted analysis. OpenAI-compatible covers OpenAI, Azure OpenAI (v1), vLLM, Ollama, NVIDIA NIM and LiteLLM.",
+    description="A model API or AI application to assess with the AI red team: OpenAI-compatible servers (OpenAI, Azure OpenAI v1, "
+                "vLLM, Ollama, NVIDIA NIM, LiteLLM), the Claude API, Gemini, or an application's own chat endpoint.",
     required_permissions="An API key limited to inference. The connection test sends one short prompt.",
 ))
-for _key, _name in (("aws_bedrock", "AWS Bedrock"), ("huggingface", "Hugging Face")):
-    register_connector(ConnectorSpec(
-        key=_key, name=_name, category="ai", status="import_only", configurable=False,
-        description="Discovered through repository analysis (dependencies, endpoints, credentials). No direct connector; "
-                    "Bedrock models reachable through an OpenAI-compatible gateway can be tested with the LLM endpoint connector."))
