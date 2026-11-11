@@ -2,15 +2,49 @@
 
 import Link from "next/link";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Card, EmptyState, ErrorState, PageHeader, SeverityBadge, Skeleton, Stat, StatusBadge } from "@/components/ui";
+import { Sparkles } from "lucide-react";
+import { Alert, Button, Card, EmptyState, ErrorState, PageHeader, SeverityBadge, Skeleton, Stat, StatusBadge } from "@/components/ui";
 import { errorMessage } from "@/lib/api";
 import { formatDate, relativeTime, titleCase } from "@/lib/format";
-import { useGet } from "@/lib/hooks";
+import { can, useAction, useGet, useMe } from "@/lib/hooks";
 import type { Obj } from "@/types/api";
 
 const tooltipStyle = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, fontSize: 12, color: "var(--text)" };
 
+function Briefing() {
+  const { data: claude } = useGet<Obj>("/analytics/claude");
+  const brief = useAction<Obj, Obj>("POST", "/analytics/briefing");
+  if (!claude) return null;
+  if (!claude.connected || !claude.in_use) {
+    return (
+      <Card className="mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+          <span className="flex items-center gap-2 text-muted"><Sparkles className="h-4 w-4" aria-hidden /> Connect Claude to get a plain-language executive briefing of this page.</span>
+          <Link href="/admin?tab=analytics" className="text-sm text-accent hover:underline">Connect Claude</Link>
+        </div>
+      </Card>
+    );
+  }
+  const a = brief.data?.analysis;
+  return (
+    <Card className="mb-4" title={<span className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-accent" aria-hidden /> Executive briefing</span>}
+          action={<Button size="sm" loading={brief.isPending} onClick={() => brief.mutate({})}>{a ? "Regenerate" : "Generate"}</Button>}>
+      {brief.error && <Alert tone="critical">{errorMessage(brief.error)}</Alert>}
+      {!a && !brief.error && <p className="text-sm text-muted">Claude summarises the figures on this page and suggests this week&apos;s priorities. Generated on request; uses your Claude Console credits.</p>}
+      {a && (
+        <div className="space-y-2 text-sm">
+          <p>{a.summary}</p>
+          <p className="text-muted">{a.why_it_matters}</p>
+          <ol className="list-decimal space-y-0.5 pl-5">{a.recommended_actions.map((x: string) => <li key={x}>{x}</li>)}</ol>
+          <p className="text-xs text-muted">AI-generated from the figures above by {brief.data?.model}. Verify against the findings before acting.{a.caveats.length ? ` Caveats: ${a.caveats.join("; ")}` : ""}</p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function OverviewPage() {
+  const { data: me } = useMe();
   const { data, error, isLoading, refetch } = useGet<Obj>("/dashboard/overview", { trend_days: 30 }, { refetchInterval: 60_000 });
   if (error) return <ErrorState message={errorMessage(error)} onRetry={() => refetch()} />;
   if (isLoading || !data) {
@@ -27,6 +61,7 @@ export default function OverviewPage() {
   return (
     <>
       <PageHeader title="Overview" description={`Exposure across all assets. Computed from live data at ${formatDate(data.generated_at, true)}.`} />
+      {!empty && can(me, "ai_analytics:use") && <Briefing />}
       {empty && (
         <Card className="mb-4">
           <EmptyState title="No assets yet">

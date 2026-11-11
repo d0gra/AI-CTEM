@@ -18,6 +18,7 @@ function PolicyEditor() {
 function PolicyForm({ initial }: { initial: Obj }) {
   const { data: me } = useMe();
   const save = useAction<Obj, Obj>("PUT", "/risk/policy");
+  const recalc = useAction<Obj, Obj>("POST", "/risk/recalculate");
   const [draft, setDraft] = useState<Obj>(() => structuredClone(initial));
   const editable = can(me, "risk:configure");
   const num = (group: string, key: string, step = 1) => (
@@ -44,7 +45,13 @@ function PolicyForm({ initial }: { initial: Obj }) {
         </div>
       </Card>
       <Card title="Attack path escalator (points)"><div className="grid grid-cols-3 gap-3">{["verified", "probable", "theoretical"].map((k) => num("attack_path_points", k))}</div></Card>
-      {editable && <div className="lg:col-span-2"><Button variant="primary" loading={save.isPending} onClick={() => save.mutate(draft)}>Save and rescore</Button></div>}
+      {editable && (
+        <div className="flex gap-2 lg:col-span-2">
+          <Button variant="primary" loading={save.isPending} onClick={() => save.mutate(draft)}>Save and rescore</Button>
+          <Button loading={recalc.isPending} onClick={() => recalc.mutate({})}>Rescore all open findings</Button>
+          {recalc.isSuccess && <span className="self-center text-xs text-muted">Rescoring queued.</span>}
+        </div>
+      )}
     </div>
   );
 }

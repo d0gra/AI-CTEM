@@ -227,6 +227,18 @@ def parse_gitleaks(data: bytes, target: str | None = None) -> Iterator[ParsedFin
         )
 
 
+# Open-source Checkov reports no severity (it is a commercial-platform field). Checks whose
+# failure directly exposes data, grants broad network access or breaks container isolation are
+# rated high; everything else is medium unless the report itself carries a severity.
+CHECKOV_HIGH = {
+    "CKV_AWS_20", "CKV_AWS_57", "CKV_AWS_24", "CKV_AWS_25", "CKV_AWS_260", "CKV_AWS_277", "CKV_AWS_17", "CKV_AWS_40",
+    "CKV_AWS_1", "CKV_AWS_62", "CKV_AWS_107", "CKV_AWS_108", "CKV_AWS_109", "CKV_AWS_110", "CKV_AWS_111",
+    "CKV_AZURE_190", "CKV_AZURE_59", "CKV_AZURE_9", "CKV_AZURE_10", "CKV_GCP_29", "CKV_GCP_28", "CKV_GCP_2", "CKV_GCP_3",
+    "CKV_K8S_16", "CKV_K8S_17", "CKV_K8S_18", "CKV_K8S_19", "CKV_K8S_20", "CKV_K8S_23", "CKV_K8S_39", "CKV_K8S_155",
+    "CKV_K8S_156", "CKV_K8S_157", "CKV_SECRET_2", "CKV_SECRET_6",
+}
+
+
 def parse_checkov(data: bytes, target: str | None = None) -> Iterator[ParsedFinding]:
     doc = _load_json(data)
     reports = doc if isinstance(doc, list) else [doc]
@@ -237,7 +249,8 @@ def parse_checkov(data: bytes, target: str | None = None) -> Iterator[ParsedFind
         for c in (report.get("results") or {}).get("failed_checks") or []:
             yield ParsedFinding(
                 asset=asset, rule_id=c.get("check_id", "checkov"), title=f"{c.get('check_name')} ({c.get('resource')})",
-                severity=severity(c.get("severity") or "medium"), domain="iac", confidence="confirmed",
+                severity=severity(c["severity"]) if c.get("severity") else ("high" if c.get("check_id") in CHECKOV_HIGH else "medium"),
+                domain="iac", confidence="confirmed",
                 description=f"Infrastructure-as-code check {c.get('check_id')} failed for {c.get('resource')}.",
                 remediation=c.get("guideline") and f"See {c['guideline']}" or "Apply the control described by the check.",
                 references=[c["guideline"]] if c.get("guideline") else [],

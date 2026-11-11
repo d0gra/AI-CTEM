@@ -31,10 +31,16 @@ def run_tool(ctx: EngineContext, argv: list[str], *, timeout: int | None = None,
     """Run an external scanner without a shell, with a timeout, an output cap and cooperative
     cancellation. Returns stdout."""
     timeout = timeout or get_settings().scanner_timeout_seconds
+    executable = shutil.which(argv[0])
+    if executable is None:
+        raise PermanentJobError(f"{argv[0]} is not installed on this worker")
+    argv = [executable, *argv[1:]]
+    # Minimal environment: the tool's own directory first (some tools are wrappers that call siblings).
+    tool_dir = str(Path(executable).resolve().parent)
+    env = {"PATH": f"{Path(executable).parent}:{tool_dir}:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin",
+           "HOME": tempfile.gettempdir(), "NO_COLOR": "1", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
     with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
-        proc = subprocess.Popen(argv, stdout=out, stderr=err, stdin=subprocess.DEVNULL, cwd=cwd,  # noqa: S603
-                                env={"PATH": "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin", "HOME": tempfile.gettempdir(),
-                                     "NO_COLOR": "1"})
+        proc = subprocess.Popen(argv, stdout=out, stderr=err, stdin=subprocess.DEVNULL, cwd=cwd, env=env)  # noqa: S603
         deadline = time.monotonic() + timeout
         try:
             while proc.poll() is None:
@@ -229,7 +235,7 @@ PATH_TOOLS: dict[str, dict] = {
               "argv": lambda p: ["grype", f"dir:{p}", "-o", "json", "-q"],
               "description": "Vulnerable packages in a source tree."},
     "semgrep": {"name": "Semgrep static analysis", "module": "web_api", "parser": "semgrep", "ok": (0, 1),
-                "argv": lambda p: ["semgrep", "scan", "--config", "auto", "--json", "--quiet", "--metrics", "off", p],
+                "argv": lambda p: ["semgrep", "scan", "--config", "p/default", "--json", "--quiet", "--metrics", "off", p],
                 "description": "Static analysis of application source code."},
     "gitleaks": {"name": "Gitleaks secret scan", "module": "supply_chain", "parser": "gitleaks", "ok": (0, 1),
                  "argv": lambda p: ["gitleaks", "dir", p, "--report-format", "json", "--report-path", "/dev/stdout",
@@ -248,12 +254,12 @@ def _run_path_tool(tool: str):
         for target in ctx.targets:
             ctx.scope(target.value, active=False)
             path = str(Path(target.value).resolve())
-            argv = spec["argv"](path)
+            argv = spec["argv"](".")  # run inside the tree so reported file paths are repository-relative
             if ctx.dry_run:
-                ctx.planned("Execute: " + " ".join(argv))
+                ctx.planned(f"Execute in {path}: " + " ".join(argv))
                 continue
             ctx.job.progress(10, f"Running {tool} on {path}")
-            output = run_tool(ctx, argv, ok_codes=spec["ok"])
+            output = run_tool(ctx, argv, ok_codes=spec["ok"], cwd=path)
             repo = ctx.asset(AssetSpec(type="repository", identifier=path, name=Path(path).name))
             ctx.mark_complete(repo)
             if output.strip():

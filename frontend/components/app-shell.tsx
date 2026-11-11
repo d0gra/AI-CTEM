@@ -186,6 +186,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </header>
         <main id="main" className="min-w-0 flex-1 p-4 lg:p-6">
+          {!me.email_verified && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-medium/40 bg-medium/10 px-3 py-2 text-xs text-medium" role="status">
+              <span>{me.email_verification_required ? "Verify your email address to use the platform." : "Your email address is not verified."} Check your inbox for the link.</span>
+              <Link href="/admin?tab=security" className="font-medium underline">Resend link</Link>
+            </div>
+          )}
           {children}
         </main>
       </div>

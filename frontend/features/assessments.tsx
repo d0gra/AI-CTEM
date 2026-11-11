@@ -99,7 +99,7 @@ function NewAssessmentDialog({ open, onClose, engines }: { open: boolean; onClos
         <p className="text-xs text-muted">{engine.description}</p>
         <div className="flex flex-wrap gap-1.5">
           <Badge tone={engine.active ? "high" : "info"}>{engine.active ? "Active: sends traffic to targets" : "Passive / offline"}</Badge>
-          {engine.tool.required && <Badge tone={engine.tool.available ? "ok" : "critical"}>{engine.tool.required}: {engine.tool.available ? engine.tool.version ?? "installed" : "not installed on this server"}</Badge>}
+          {engine.tool.required && <Badge tone={engine.tool.available ? "ok" : "critical"}>{engine.tool.available ? engine.tool.version ?? engine.tool.required : `${engine.tool.required} is not installed on the workers`}</Badge>}
         </div>
         <Field label="Name">
           <Input required minLength={2} value={name} onChange={(e) => setName(e.target.value)} />
@@ -139,9 +139,9 @@ function NewAssessmentDialog({ open, onClose, engines }: { open: boolean; onClos
   );
 }
 
-export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function ImportDialog({ open, onClose, initialFormat = "trivy" }: { open: boolean; onClose: () => void; initialFormat?: string }) {
   const client = useQueryClient();
-  const [format, setFormat] = useState("trivy");
+  const [format, setFormat] = useState(initialFormat);
   const [target, setTarget] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -195,6 +195,10 @@ export function AssessmentsPanel({ module, allowImport }: { module: string; allo
   const { data: engines } = useGet<Obj[]>("/assessments/engines");
   const { data, error, isLoading, refetch } = useGet<Obj>("/assessments", { module, page_size: 50 }, { refetchInterval: 4000 });
   const run = useAction<{ id: string; dry_run: boolean }, Obj>("POST", (b) => `/assessments/${b.id}/run`);
+  const update = useAction<{ id: string } & Obj, Obj>("PATCH", (b) => `/assessments/${b.id}`);
+  const remove = useAction<{ id: string }, Obj>("DELETE", (b) => `/assessments/${b.id}`);
+  const cancel = useAction<{ id: string }, Obj>("POST", (b) => `/jobs/${b.id}/cancel`);
+  const [editing, setEditing] = useState<Obj | null>(null);
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
   const moduleEngines = (engines ?? []).filter((e) => e.module === module && e.kind !== "scanner_import" && e.kind !== "ai_redteam");
@@ -212,7 +216,7 @@ export function AssessmentsPanel({ module, allowImport }: { module: string; allo
         )
       }
     >
-      {run.error && <div className="mb-3"><Alert tone="critical">{errorMessage(run.error)}</Alert></div>}
+      {(run.error || update.error || remove.error || cancel.error) && <div className="mb-3"><Alert tone="critical">{errorMessage(run.error ?? update.error ?? remove.error ?? cancel.error)}</Alert></div>}
       {isLoading && <Skeleton className="h-16 w-full" />}
       {error && <ErrorState message={errorMessage(error)} onRetry={() => refetch()} />}
       {data && data.items.length === 0 && (
@@ -228,11 +232,12 @@ export function AssessmentsPanel({ module, allowImport }: { module: string; allo
             return (
               <li key={a.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5">
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-medium">{a.name}</div>
+                  <div className="flex items-center gap-2 truncate text-sm font-medium">{a.name}{!a.enabled && <Badge>Schedule paused</Badge>}</div>
                   <div className="truncate text-xs text-muted">
                     {titleCase(a.kind)}
                     {a.targets.length > 0 && ` · ${a.targets.slice(0, 2).map((t: Obj) => t.value).join(", ")}${a.targets.length > 2 ? ` +${a.targets.length - 2}` : ""}`}
                     {a.schedule_interval_minutes && ` · every ${a.schedule_interval_minutes} min`}
+                    {a.enabled && a.next_run_at && ` · next ${relativeTime(a.next_run_at)}`}
                   </div>
                   {last?.error && <div className="mt-1 text-xs text-critical">{last.error}</div>}
                   {last?.summary?.skipped?.length > 0 && <div className="mt-1 text-xs text-medium">{last.summary.skipped.length} item(s) skipped: {last.summary.skipped[0].reason}</div>}
@@ -248,11 +253,16 @@ export function AssessmentsPanel({ module, allowImport }: { module: string; allo
                   ) : (
                     <span className="text-xs text-muted">Never run</span>
                   )}
+                  {canRun && busy && last.job_id && <Button size="sm" variant="ghost" onClick={() => cancel.mutate({ id: last.job_id })}>Cancel run</Button>}
                   {canRun && a.kind !== "scanner_import" && (
                     <>
                       <Button size="sm" variant="ghost" disabled={busy || run.isPending} onClick={() => run.mutate({ id: a.id, dry_run: true })}>Dry run</Button>
                       <Button size="sm" disabled={busy || run.isPending} onClick={() => run.mutate({ id: a.id, dry_run: false })}><Play className="h-3 w-3" /> Run</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setEditing(a)}>Edit</Button>
                     </>
+                  )}
+                  {canRun && !busy && (
+                    <Button size="sm" variant="ghost" onClick={() => window.confirm(`Delete “${a.name}”? Its findings are kept.`) && remove.mutate({ id: a.id })}>Delete</Button>
                   )}
                 </div>
               </li>
@@ -261,6 +271,23 @@ export function AssessmentsPanel({ module, allowImport }: { module: string; allo
         </ul>
       )}
       {creating && <NewAssessmentDialog open onClose={() => setCreating(false)} engines={moduleEngines} />}
+      <Dialog open={!!editing} onClose={() => setEditing(null)} title={editing ? `Edit ${editing.name}` : ""}>
+        {editing && (
+          <form className="space-y-3" onSubmit={(e) => {
+            e.preventDefault();
+            const form = new FormData(e.currentTarget);
+            const interval = String(form.get("interval") ?? "");
+            update.mutate({ id: editing.id, name: String(form.get("name")), enabled: form.has("enabled"), schedule_interval_minutes: interval ? Number(interval) : null },
+                          { onSuccess: () => setEditing(null) });
+          }}>
+            <Field label="Name"><Input name="name" required minLength={2} defaultValue={editing.name} /></Field>
+            <Field label="Repeat every (minutes)" hint="Empty = on demand only. Minimum 15."><Input type="number" name="interval" min={15} defaultValue={editing.schedule_interval_minutes ?? ""} /></Field>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="enabled" defaultChecked={editing.enabled} /> Run on schedule</label>
+            <p className="text-xs text-muted">Targets and options are fixed once created; create a new assessment to change them.</p>
+            <div className="flex justify-end gap-2"><Button type="button" onClick={() => setEditing(null)}>Cancel</Button><Button type="submit" variant="primary" loading={update.isPending}>Save</Button></div>
+          </form>
+        )}
+      </Dialog>
       {importing && <ImportDialog open onClose={() => setImporting(false)} />}
     </Card>
   );

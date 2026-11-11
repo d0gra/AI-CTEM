@@ -35,7 +35,7 @@ class Vulnerability(Base, IdMixin, TimestampMixin):
     title: Mapped[str] = mapped_column(String(512), default="", server_default="")
     description: Mapped[str] = mapped_column(Text, default="", server_default="")
     cvss_score: Mapped[float | None] = mapped_column(Float)
-    cvss_vector: Mapped[str | None] = mapped_column(String(160))
+    cvss_vector: Mapped[str | None] = mapped_column(String(400))  # CVSS 4.0 vectors exceed 160 characters
     cvss_version: Mapped[str | None] = mapped_column(String(8))
     cwe_ids: Mapped[list[str]] = mapped_column(ARRAY(String(24)), default=list, server_default="{}")
     epss_score: Mapped[float | None] = mapped_column(Float)

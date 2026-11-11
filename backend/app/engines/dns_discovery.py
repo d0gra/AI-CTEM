@@ -41,7 +41,7 @@ class DnsDiscoveryConfig(BaseModel):
 def query(name: str, rtype: str) -> tuple[str, list[str]]:
     """Resolve one record set. Returns (status, values) with status ok | nxdomain | nodata | error."""
     resolver = dns.resolver.Resolver()
-    resolver.lifetime = 5.0
+    resolver.timeout, resolver.lifetime = 2.0, 4.0  # per nameserver attempt, and in total
     try:
         answer = resolver.resolve(name, rtype, raise_on_no_answer=False)
         values = [r.to_text().strip('"') if rtype == "TXT" else r.to_text().rstrip(".") for r in answer] if answer.rrset else []
@@ -163,9 +163,20 @@ def run(ctx: EngineContext) -> None:
         if wildcard_ips:
             root.attributes = {**root.attributes, "wildcard_dns": sorted(wildcard_ips)}
         unresolved = 0
-        for name in sorted(candidates)[: config.max_subdomains]:
+        names = sorted(candidates)[: config.max_subdomains]
+        # Resolve concurrently: lookups are network-bound and some resolvers are slow to answer for
+        # names that do not exist. Results are then processed in order on this thread.
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            futures = [(name, pool.submit(_resolve_host, name)) for name in names]
+            resolved = []
+            for done, (name, future) in enumerate(futures, start=1):
+                resolved.append((name, future.result()))
+                if done % 10 == 0:
+                    ctx.job.progress(int(100 * (index + done / len(names)) / max(1, len(ctx.targets))), f"Resolved {done}/{len(names)} names under {domain}")
+        for name, info in resolved:
             ctx.checkpoint()
-            info = _resolve_host(name)
             ctx.stats["requests"] += 3
             ips = info["a"] + info["aaaa"]
             if info["status"] == "dangling":

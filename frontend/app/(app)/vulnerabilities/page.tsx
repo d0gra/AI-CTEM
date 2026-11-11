@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { DataTable } from "@/components/data-table";
-import { Badge, Dialog, JsonBlock, KeyValue, PageHeader, Tabs } from "@/components/ui";
+import Link from "next/link";
+import { Badge, Dialog, KeyValue, PageHeader, StatusBadge, Tabs } from "@/components/ui";
+import { useGet } from "@/lib/hooks";
 import { AssessmentsPanel } from "@/features/assessments";
 import { FindingsTable } from "@/features/findings-table";
 import { formatDate } from "@/lib/format";
@@ -11,6 +13,7 @@ import type { Obj } from "@/types/api";
 export default function VulnerabilitiesPage() {
   const [tab, setTab] = useState<"catalogue" | "findings" | "assessments">("catalogue");
   const [selected, setSelected] = useState<Obj | null>(null);
+  const { data: detail } = useGet<Obj>(selected ? `/intel/vulnerabilities/${selected.id}` : null);
   return (
     <>
       <PageHeader
@@ -52,7 +55,21 @@ export default function VulnerabilitiesPage() {
               ["Published", formatDate(selected.published_at)],
               ["Catalogue source", selected.source],
             ]} />
-            {selected.references?.length > 0 && <JsonBlock value={selected.references.slice(0, 10)} />}
+            {detail && detail.findings?.length > 0 && (
+              <div>
+                <div className="mb-1 text-xs font-medium text-muted">Affected assets ({detail.affected_assets})</div>
+                <ul className="max-h-48 space-y-1 overflow-y-auto text-xs">
+                  {detail.findings.map((f: Obj) => (
+                    <li key={f.id} className="flex items-center justify-between gap-2">
+                      <Link href={`/findings/${f.id}`} className="truncate hover:underline">{f.asset_name}</Link>
+                      <span className="flex items-center gap-1"><StatusBadge value={f.status} /><span className="tabular">{f.risk_score.toFixed(0)}</span></span>
+                    </li>))}
+                </ul>
+              </div>
+            )}
+            {selected.references?.length > 0 && (
+              <ul className="space-y-0.5 text-xs">{selected.references.slice(0, 10).map((r: Obj) => <li key={r.url} className="truncate"><a href={r.url} target="_blank" rel="noreferrer noopener" className="text-accent hover:underline">{r.url}</a></li>)}</ul>
+            )}
           </div>
         )}
       </Dialog>

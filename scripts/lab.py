@@ -106,6 +106,45 @@ class Lab(BaseHTTPRequestHandler):
         pass
 
 
+def _self_signed(directory: str) -> tuple[str, str]:
+    """Short-lived self-signed certificate for the HTTPS listener (requires the cryptography package)."""
+    import datetime
+    import os
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "lab.localhost")])
+    now = datetime.datetime.now(datetime.UTC)
+    cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
+            .serial_number(x509.random_serial_number()).not_valid_before(now - datetime.timedelta(days=1))
+            .not_valid_after(now + datetime.timedelta(days=10))  # expires soon, so the expiry check fires
+            .add_extension(x509.SubjectAlternativeName([x509.DNSName("lab.localhost")]), critical=False).sign(key, hashes.SHA256()))
+    cert_path, key_path = os.path.join(directory, "lab-cert.pem"), os.path.join(directory, "lab-key.pem")
+    with open(cert_path, "wb") as fh:
+        fh.write(cert.public_bytes(serialization.Encoding.PEM))
+    with open(key_path, "wb") as fh:
+        fh.write(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+    return cert_path, key_path
+
+
 if __name__ == "__main__":
+    import ssl
+    import tempfile
+    import threading
+
+    try:
+        cert, key = _self_signed(tempfile.mkdtemp(prefix="ctem-lab-"))
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(cert, key)
+        https = ThreadingHTTPServer(("127.0.0.1", PORT + 1), Lab)
+        https.socket = context.wrap_socket(https.socket, server_side=True)
+        threading.Thread(target=https.serve_forever, daemon=True).start()
+        print(f"HTTPS (self-signed, expires in 10 days) on https://127.0.0.1:{PORT + 1}")
+    except ImportError:
+        print("cryptography is not installed; HTTPS listener disabled")
     print(f"Lab targets listening on http://127.0.0.1:{PORT}  (loopback only; Ctrl-C to stop)")
     ThreadingHTTPServer(("127.0.0.1", PORT), Lab).serve_forever()

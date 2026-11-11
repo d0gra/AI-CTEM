@@ -43,6 +43,7 @@ function LoginForm() {
       <Field label="Email" error={formState.errors.email?.message}>
         <Input type="email" autoComplete="username" {...register("email")} />
       </Field>
+      <div className="-mb-2 text-right"><Link href="/forgot-password" className="text-xs text-accent hover:underline">Forgot password?</Link></div>
       <Field label="Password" error={formState.errors.password?.message}>
         <Input type="password" autoComplete="current-password" {...register("password")} />
       </Field>

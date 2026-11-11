@@ -56,16 +56,32 @@ def register(spec: EngineSpec) -> EngineSpec:
     return spec
 
 
+_TOOL_CACHE: dict[str, tuple[float, dict]] = {}
+TOOL_CACHE_SECONDS = 300
+
+
 def tool_status(spec: EngineSpec) -> dict:
-    """Whether the engine's external tool is installed on this worker, with its version."""
+    """Whether the engine's external tool is installed on this host, with its version (cached for 5 minutes)."""
     if not spec.requires_tool:
         return {"required": None, "available": True, "version": None}
+    import time
+
+    cached = _TOOL_CACHE.get(spec.requires_tool)
+    if cached and time.monotonic() - cached[0] < TOOL_CACHE_SECONDS:
+        return cached[1]
+    status = _probe_tool(spec)
+    _TOOL_CACHE[spec.requires_tool] = (time.monotonic(), status)
+    return status
+
+
+def _probe_tool(spec: EngineSpec) -> dict:
+    assert spec.requires_tool
     path = shutil.which(spec.requires_tool)
     if not path:
         return {"required": spec.requires_tool, "available": False, "version": None}
     version = None
     try:
-        out = subprocess.run([path, *spec.version_args], capture_output=True, text=True, timeout=10)  # noqa: S603
+        out = subprocess.run([path, *spec.version_args], capture_output=True, text=True, timeout=45)  # noqa: S603
         import re
 
         text_out = re.sub(r"\x1b\[[0-9;]*m", "", out.stdout + "\n" + out.stderr)

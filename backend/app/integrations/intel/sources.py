@@ -176,9 +176,14 @@ def sync_nvd(db: Session, cve_ids: list[str] | None = None, *, limit: int = 40) 
         if not items or vuln is None:
             missing.append(cve_id)
             continue
-        apply_nvd_record(vuln, items[0]["cve"])
-        updated += 1
-        db.flush()
+        try:
+            with db.begin_nested():  # one malformed record must not discard the rest of the batch
+                apply_nvd_record(vuln, items[0]["cve"])
+                db.flush()
+            updated += 1
+        except Exception as exc:
+            db.expire(vuln)
+            missing.append(f"{cve_id} ({type(exc).__name__})")
     return {"source": "nvd", "requested": len(cve_ids), "records": updated, "not_found": missing[:20]}
 
 

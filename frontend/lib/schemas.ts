@@ -25,6 +25,7 @@ export const scopeSchema = z.object({
   allow_active: z.boolean(),
   allow_private_network: z.boolean(),
   authorization_note: z.string().min(10, "Describe who authorized this and under which agreement (at least 10 characters)").max(2000),
+  expires_at: z.string().optional(),
 });
 export type ScopeValues = z.infer<typeof scopeSchema>;
 
@@ -47,3 +48,12 @@ export const redTeamSchema = z.object({
   forbidden_markers: z.string().max(2000),
 });
 export type RedTeamValues = z.infer<typeof redTeamSchema>;
+
+export const claudeSchema = z
+  .object({
+    credential_source: z.enum(["api_key", "server"]),
+    api_key: z.string().max(400).optional(),
+    model: z.string().min(3, "Choose a model"),
+    effort: z.enum(["low", "medium", "high"]),
+  });
+export type ClaudeValues = z.infer<typeof claudeSchema>;

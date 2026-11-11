@@ -8,12 +8,21 @@ import { can, useAction, useGet, useMe } from "@/lib/hooks";
 import type { Obj } from "@/types/api";
 
 function Detail({ id, onClose }: { id: string; onClose: () => void }) {
+  const { data: me } = useMe();
   const { data } = useGet<Obj>(`/policies/${id}`);
+  const evaluate = useAction<Obj, Obj>("POST", `/policies/${id}/evaluate`);
+  const requestException = useAction<Obj>("POST", `/policies/${id}/exceptions`);
+  const decide = useAction<{ id: string; approve: boolean }, Obj>("POST", (b) => `/policies/exceptions/${b.id}/decision`);
+  const [exceptionFor, setExceptionFor] = useState<Obj | null>(null);
   return (
     <Dialog open onClose={onClose} title={data?.name ?? "Policy"} wide>
       {!data ? <Skeleton className="h-32" /> : (
         <div className="space-y-3 text-sm">
-          <p>{data.description}</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p>{data.description}</p>
+            <Button size="sm" loading={evaluate.isPending} onClick={() => evaluate.mutate({})}>Evaluate now</Button>
+          </div>
+          {(evaluate.error || requestException.error || decide.error) && <Alert tone="critical">{errorMessage(evaluate.error ?? requestException.error ?? decide.error)}</Alert>}
           <div className="grid gap-3 md:grid-cols-2">
             <div><div className="mb-1 text-xs font-medium text-muted">Applies to ({data.entity_type}s matching)</div><JsonBlock value={data.scope} /></div>
             <div><div className="mb-1 text-xs font-medium text-muted">Must satisfy</div><JsonBlock value={data.condition} /></div>
@@ -23,7 +32,11 @@ function Detail({ id, onClose }: { id: string; onClose: () => void }) {
             <div className="mb-1 text-xs font-medium text-muted">Violations in latest evaluation ({data.latest_evaluation?.failed ?? 0})</div>
             {!data.latest_evaluation ? <p className="text-xs text-muted">Not evaluated yet.</p> : data.latest_evaluation.violations.length === 0 ? <p className="text-xs text-muted">None.</p> : (
               <ul className="max-h-60 space-y-1 overflow-y-auto text-xs">
-                {data.latest_evaluation.violations.map((v: Obj) => <li key={v.entity_id} className="rounded border border-border p-2"><span className="font-medium">{v.label}</span> <span className="font-mono text-muted">{JSON.stringify(v.observed)}</span></li>)}
+                {data.latest_evaluation.violations.map((v: Obj) => (
+                  <li key={v.entity_id} className="flex items-start justify-between gap-2 rounded border border-border p-2">
+                    <span><span className="font-medium">{v.label}</span> <span className="font-mono text-muted">{JSON.stringify(v.observed)}</span></span>
+                    {can(me, "risk:request") && <Button size="sm" variant="ghost" onClick={() => setExceptionFor(v)}>Request exception</Button>}
+                  </li>))}
               </ul>
             )}
           </div>
@@ -31,6 +44,35 @@ function Detail({ id, onClose }: { id: string; onClose: () => void }) {
             <div className="mb-1 text-xs font-medium text-muted">Evaluation history</div>
             <ul className="text-xs">{data.history.slice(0, 8).map((h: Obj) => <li key={h.id}>{formatDate(h.evaluated_at, true)}: <StatusBadge value={h.status} /> {h.passed}/{h.total} passed, {h.exempt} exempt</li>)}</ul>
           </div>
+          <div>
+            <div className="mb-1 text-xs font-medium text-muted">Exceptions</div>
+            {data.exceptions.length === 0 ? <p className="text-xs text-muted">None.</p> : (
+              <ul className="space-y-1 text-xs">
+                {data.exceptions.map((x: Obj) => (
+                  <li key={x.id} className="flex items-start justify-between gap-2 rounded border border-border p-2">
+                    <span><StatusBadge value={x.status} /> {x.reason} <span className="text-muted">· until {formatDate(x.expires_at)}</span></span>
+                    {x.status === "pending" && can(me, "risk:approve") && x.requested_by_user_id !== me?.id && (
+                      <span className="flex gap-1"><Button size="sm" onClick={() => decide.mutate({ id: x.id, approve: true })}>Approve</Button><Button size="sm" variant="ghost" onClick={() => decide.mutate({ id: x.id, approve: false })}>Reject</Button></span>)}
+                  </li>))}
+              </ul>
+            )}
+          </div>
+          {exceptionFor && (
+            <form className="space-y-2 rounded-md border border-border p-3" onSubmit={(e) => {
+              e.preventDefault();
+              const form = new FormData(e.currentTarget);
+              requestException.mutate({ entity_id: exceptionFor.entity_id, reason: String(form.get("reason")), expires_at: new Date(`${form.get("expires_at")}T23:59:59`).toISOString() },
+                                      { onSuccess: () => setExceptionFor(null) });
+            }}>
+              <div className="text-xs font-medium">Exception for {exceptionFor.label}</div>
+              <Textarea name="reason" required minLength={20} placeholder="Why this item cannot meet the policy, and what reduces the risk (at least 20 characters)" />
+              <div className="flex items-end gap-2">
+                <Field label="Expires"><Input type="date" name="expires_at" required /></Field>
+                <Button type="submit" size="sm" variant="primary" loading={requestException.isPending}>Submit for approval</Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setExceptionFor(null)}>Cancel</Button>
+              </div>
+            </form>
+          )}
         </div>
       )}
     </Dialog>

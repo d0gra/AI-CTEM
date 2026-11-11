@@ -14,7 +14,7 @@ import type { Obj } from "@/types/api";
 import { useQueryClient } from "@tanstack/react-query";
 
 function Prose({ text }: { text: string }) {
-  return text ? <p className="whitespace-pre-wrap text-sm leading-relaxed">{text}</p> : <p className="text-sm text-muted">Not provided.</p>;
+  return <p className="whitespace-pre-wrap text-sm leading-relaxed">{text}</p>;
 }
 
 function RiskBreakdown({ risk }: { risk: Obj }) {
@@ -119,14 +119,16 @@ export default function FindingDetailPage() {
       {actionError && <div className="mb-3"><Alert tone="critical">{errorMessage(actionError)}</Alert></div>}
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
-          <Card title="Description"><Prose text={f.description} /></Card>
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card title="Technical impact"><Prose text={f.technical_impact} /></Card>
-            <Card title="Business impact"><Prose text={f.business_impact} /></Card>
-          </div>
-          <Card title="Reproduction"><Prose text={f.reproduction} /></Card>
+          {f.description && <Card title="Description"><Prose text={f.description} /></Card>}
+          {(f.technical_impact || f.business_impact) && (
+            <div className="grid gap-4 md:grid-cols-2">
+              {f.technical_impact && <Card title="Technical impact"><Prose text={f.technical_impact} /></Card>}
+              {f.business_impact && <Card title="Business impact"><Prose text={f.business_impact} /></Card>}
+            </div>
+          )}
+          {f.reproduction && <Card title="Reproduction"><pre className="overflow-x-auto whitespace-pre-wrap font-mono text-xs">{f.reproduction}</pre></Card>}
           <Card title="Remediation">
-            <Prose text={f.remediation} />
+            {f.remediation ? <Prose text={f.remediation} /> : <p className="text-sm text-muted">No remediation guidance was supplied by the source.</p>}
             {f.remediation_tasks.length > 0 && (
               <ul className="mt-3 space-y-1 border-t border-border pt-3 text-sm">
                 {f.remediation_tasks.map((t: Obj) => (

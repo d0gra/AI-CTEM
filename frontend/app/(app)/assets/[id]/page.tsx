@@ -22,6 +22,7 @@ export default function AssetDetailPage() {
   const { data: facets } = useGet<Obj>("/assets/facets");
   const patch = useAction<Obj>("PATCH", `/assets/${id}`);
   const link = useAction<Obj>("POST", "/asset-relationships");
+  const unlink = useAction<{ id: string }, Obj>("DELETE", (b) => `/asset-relationships/${b.id}`);
   const [tab, setTab] = useState<"findings" | "relationships" | "history" | "attributes">("findings");
   const [linking, setLinking] = useState(false);
   const [target, setTarget] = useState("");
@@ -62,13 +63,23 @@ export default function AssetDetailPage() {
               <Select disabled={!editable} value={a.owner_team_id ?? ""} onChange={set("owner_team_id")}><option value="">No team</option>{(directory?.teams ?? []).map((t: Obj) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select>
             </Field>
           </div>
+          <form className="mt-3 grid grid-cols-2 gap-3" onSubmit={(e) => {
+            e.preventDefault();
+            const form = new FormData(e.currentTarget);
+            patch.mutate({ business_unit: String(form.get("business_unit") || "") || null,
+                           tags: String(form.get("tags") || "").split(",").map((t) => t.trim()).filter(Boolean) });
+          }}>
+            <Field label="Business unit"><input name="business_unit" disabled={!editable} defaultValue={a.business_unit ?? ""} className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm" /></Field>
+            <Field label="Tags" hint="Comma-separated"><input name="tags" disabled={!editable} defaultValue={a.tags.join(", ")} className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm" /></Field>
+            {editable && <div className="col-span-2"><Button size="sm" type="submit" loading={patch.isPending}>Save labels</Button></div>}
+          </form>
           <p className="mt-3 text-xs text-muted">Changing exposure, criticality or sensitivity rescores this asset&apos;s findings. Discovery never lowers exposure or overwrites analyst classification.</p>
         </Card>
         <Card title="Provenance">
           <KeyValue items={[
             ["Discovered by", a.discovery_sources.join(", ") || "—"], ["First seen", formatDate(a.first_seen_at, true)], ["Last seen", formatDate(a.last_seen_at, true)],
             ["Status", titleCase(a.status)], ["Open findings", Object.entries(a.findings_by_severity).map(([k, v]) => `${v} ${k}`).join(", ") || "None"],
-            ["Tags", a.tags.join(", ") || "—"],
+            ["Business unit", a.business_unit ?? "—"], ["Tags", a.tags.join(", ") || "—"],
           ]} />
         </Card>
         <Card title="Relationship graph">
@@ -89,11 +100,12 @@ export default function AssetDetailPage() {
           <Card action={editable && <Button size="sm" onClick={() => setLinking(true)}>Add relationship</Button>}>
             {!rels?.length ? <EmptyState title="No relationships">Relationships are created by discovery engines or recorded manually. They are the edges used for attack path analysis.</EmptyState> : (
               <table className="w-full text-left text-sm">
-                <thead className="text-xs text-muted"><tr><th className="py-1 font-medium">Source</th><th className="font-medium">Relationship</th><th className="font-medium">Target</th><th className="font-medium">Provenance</th><th className="font-medium">Confidence</th></tr></thead>
+                <thead className="text-xs text-muted"><tr><th className="py-1 font-medium">Source</th><th className="font-medium">Relationship</th><th className="font-medium">Target</th><th className="font-medium">Provenance</th><th className="font-medium">Confidence</th><th /></tr></thead>
                 <tbody>{rels.map((r) => (
                   <tr key={r.id} className="border-t border-border">
                     <td className="py-1.5">{r.source.name}</td><td><Badge>{r.type}</Badge></td><td>{r.target.name}</td>
                     <td className="text-xs text-muted">{r.provenance}</td><td className="tabular text-xs">{Math.round(r.confidence * 100)}%</td>
+                    <td className="text-right">{editable && <Button size="sm" variant="ghost" onClick={() => window.confirm("Remove this relationship? Attack paths through it disappear at the next computation.") && unlink.mutate({ id: r.id })}>Remove</Button>}</td>
                   </tr>))}</tbody>
               </table>
             )}
