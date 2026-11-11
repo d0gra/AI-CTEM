@@ -6,6 +6,7 @@ model listings only.
 """
 
 import json
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -64,14 +65,14 @@ def run_mcp_probe(ctx: EngineContext) -> None:
         session: dict[str, str] = {}
         counter = iter(range(1, 100))
 
-        def call(method: str, params: dict | None = None, notify: bool = False, _url=url, _session=session, _dec=decision) -> FetchResult:
+        def call(method: str, params: dict | None = None, notify: bool = False, _url=url, _session=session, _dec=decision, _ids=counter) -> FetchResult:
             if method not in ALLOWED_MCP_METHODS:  # hard guard: this probe can never invoke a tool
                 raise RuntimeError(f"MCP method {method} is not permitted in a probe")
             body: dict = {"jsonrpc": "2.0", "method": method}
             if params is not None:
                 body["params"] = params
             if not notify:
-                body["id"] = next(counter)
+                body["id"] = next(_ids)
             ctx.stats["requests"] += 1
             return safe_fetch("POST", _url, allow_private=_dec.allow_private, json_body=body, verify_tls=False, max_redirects=0,
                               max_bytes=2 * 1024 * 1024, headers={"Accept": "application/json, text/event-stream",
@@ -87,7 +88,7 @@ def run_mcp_probe(ctx: EngineContext) -> None:
             ctx.db.add(row)
         row.endpoint, row.uses_tls, row.last_probed_at = url, url.startswith("https://"), utcnow()
         ai = ctx.db.get(AIAsset, asset.id)
-        common = {"asset": asset, "source": ctx.source, "domain": "ai_mcp"}
+        common: dict[str, Any] = {"asset": asset, "source": ctx.source, "domain": "ai_mcp"}
         handshake = EvidenceInput("http_exchange", f"POST {url} initialize -> HTTP {init.status_code}", {
             "request": {"method": "POST", "url": url, "jsonrpc_method": "initialize", "authorization_header_sent": False},
             "response": {"status": init.status_code, "www_authenticate": init.headers.get("www-authenticate"),
@@ -216,7 +217,7 @@ def run_endpoint_probe(ctx: EngineContext) -> None:
                                     exposure=_exposure(first), attributes={"api_style": kind, "models": models[:50]},
                                     ai={"provider": "ollama" if kind == "ollama" else None}))
         ai = ctx.db.get(AIAsset, asset.id)
-        common = {"asset": asset, "source": ctx.source, "domain": "ai_infra"}
+        common: dict[str, Any] = {"asset": asset, "source": ctx.source, "domain": "ai_infra"}
         if not base.startswith("https://"):
             ctx.finding(FindingInput(**common, rule_id="ai.endpoint.plaintext", severity="medium", confidence="confirmed", cwe="CWE-319",
                                      title="Inference endpoint is served over plaintext HTTP",

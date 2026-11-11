@@ -11,7 +11,7 @@ class RequestContext:
     user_agent: str | None = None
 
 
-_ctx: ContextVar[RequestContext] = ContextVar("request_context", default=RequestContext())
+_ctx: ContextVar[RequestContext | None] = ContextVar("request_context", default=None)
 
 
 def set_request_context(ctx: RequestContext) -> None:
@@ -19,4 +19,4 @@ def set_request_context(ctx: RequestContext) -> None:
 
 
 def get_request_context() -> RequestContext:
-    return _ctx.get()
+    return _ctx.get() or RequestContext()

@@ -14,8 +14,19 @@ from app.core.security import sha256_hex
 from app.db.base import utcnow
 from app.domains.findings import service
 from app.models import (
-    AIFinding, Assessment, AssessmentRun, Asset, Evidence, Finding, FindingEvent, RemediationTask, RiskAcceptance,
-    RiskScore, Team, User, Vulnerability,
+    AIFinding,
+    Assessment,
+    AssessmentRun,
+    Asset,
+    Evidence,
+    Finding,
+    FindingEvent,
+    RemediationTask,
+    RiskAcceptance,
+    RiskScore,
+    Team,
+    User,
+    Vulnerability,
 )
 from app.models.finding import AI_DOMAINS, FINDING_DOMAINS, FINDING_STATUSES, OPEN_STATUSES, SEVERITIES
 

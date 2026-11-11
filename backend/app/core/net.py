@@ -5,6 +5,7 @@ every resolved address is checked against the deny rules, and the connection is 
 validated address so a second DNS lookup cannot redirect the request (DNS rebinding).
 """
 
+import contextlib
 import ipaddress
 import socket
 import time
@@ -59,7 +60,7 @@ def resolve_host(host: str, *, allow_private: bool) -> list[str]:
             infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
         except socket.gaierror as exc:
             raise BlockedDestination(f"Hostname {host} does not resolve") from exc
-        candidates = list(dict.fromkeys(i[4][0] for i in infos))
+        candidates = list(dict.fromkeys(str(i[4][0]) for i in infos))
     if not candidates:
         raise BlockedDestination(f"Hostname {host} does not resolve")
     return [str(check_ip(c, allow_private=allow_private)) for c in candidates]
@@ -127,10 +128,8 @@ def safe_fetch(
             request_headers["Host"] = host if parsed.port in (None, default_port) else f"{host}:{parsed.port}"
             extensions["sni_hostname"] = host
         else:
-            try:
+            with contextlib.suppress(ValueError):  # a hostname (not an IP literal) with an injected transport
                 check_ip(host.strip("[]"), allow_private=allow_private)
-            except ValueError:
-                pass  # hostname with injected transport
             ip, target = "", parsed
         with httpx.Client(verify=verify_tls, timeout=timeout, follow_redirects=False, transport=transport) as client:
             request = client.build_request(

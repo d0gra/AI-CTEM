@@ -9,6 +9,7 @@ import os
 import re
 import tomllib
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -19,8 +20,17 @@ from app.domains.findings.service import EvidenceInput, FindingInput
 from app.domains.risk.policy import load_policy
 from app.engines.ai import mcp_analysis, model_scan
 from app.engines.ai.signatures import (
-    BY_KEY, CODE_EXECUTION_FORMATS, ENV_INDEX, MCP_CONFIG_NAMES, MCP_CONFIG_PARENTS, MODEL_EXTENSIONS, NPM_INDEX,
-    PYPI_INDEX, SECRET_PATTERNS, SIGNATURES, AISignature,
+    BY_KEY,
+    CODE_EXECUTION_FORMATS,
+    ENV_INDEX,
+    MCP_CONFIG_NAMES,
+    MCP_CONFIG_PARENTS,
+    MODEL_EXTENSIONS,
+    NPM_INDEX,
+    PYPI_INDEX,
+    SECRET_PATTERNS,
+    SIGNATURES,
+    AISignature,
 )
 from app.engines.scanners import analyse_components
 from app.integrations.scanners.parsers import SbomComponent
@@ -221,7 +231,7 @@ class _Scan:
         row.artifact_format, row.sha256, row.size_bytes, row.source_uri = fmt, digest, min(size, 2**31 - 1), rel
         row.last_scanned_at = utcnow()
         self.ctx.link(self.repo, asset, "CONTAINS")
-        common = {"asset": asset, "source": self.ctx.source, "domain": "ai_model", "owasp_llm": "LLM03:2025", "discriminator": rel}
+        common: dict[str, Any] = {"asset": asset, "source": self.ctx.source, "domain": "ai_model", "owasp_llm": "LLM03:2025", "discriminator": rel}
         inspection = model_scan.inspect(path, fmt)
         if inspection["dangerous"]:
             refs = ", ".join(d["import"] for d in inspection["dangerous"][:6])

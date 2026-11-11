@@ -44,7 +44,7 @@ class ConnectorSpec:
     live_validated: bool = False
     config_model: type[BaseModel] = NoSettings
     credentials_model: type[BaseModel] = NoSettings
-    test: Callable[[BaseModel, BaseModel], ConnectionResult] | None = None
+    test: Callable[..., ConnectionResult] | None = None
     required_permissions: str = ""
     configurable: bool = True  # False for file-import and reference sources
 

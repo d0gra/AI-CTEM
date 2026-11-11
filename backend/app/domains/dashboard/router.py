@@ -6,8 +6,21 @@ from sqlalchemy import and_, func, or_, select, text
 from app.api.deps import Db, Principal, require
 from app.db.base import utcnow
 from app.models import (
-    AIAgent, AIAsset, AIFinding, AIIntegration, AIModel, Assessment, AssessmentRun, Asset, AttackPath, Finding,
-    MCPServer, Policy, PolicyEvaluation, RemediationTask, Vulnerability,
+    AIAgent,
+    AIAsset,
+    AIFinding,
+    AIIntegration,
+    AIModel,
+    Assessment,
+    AssessmentRun,
+    Asset,
+    AttackPath,
+    Finding,
+    MCPServer,
+    Policy,
+    PolicyEvaluation,
+    RemediationTask,
+    Vulnerability,
 )
 from app.models.asset import AI_ASSET_TYPES
 from app.models.finding import AI_DOMAINS, OPEN_STATUSES
@@ -22,7 +35,7 @@ def _count(db: Db, *where, model=Finding) -> int:
 
 
 def _group(db: Db, column, *where) -> dict:
-    return {k: v for k, v in db.execute(select(column, func.count()).where(*where).group_by(column)).all()}
+    return dict(db.execute(select(column, func.count()).where(*where).group_by(column)).all())
 
 
 def _trend(db: Db, days: int) -> list[dict]:
@@ -143,9 +156,9 @@ def ai_overview(db: Db, _: Principal = require("ai:read")) -> dict:
                                            Asset.owner_team_id.is_(None), model=Asset),
                    "agents": _count(db, model=AIAgent), "mcp_servers": _count(db, model=MCPServer),
                    "models": _count(db, model=AIModel), "integrations_detected": _count(db, model=AIIntegration)},
-        "by_approval_status": {k: v for k, v in db.execute(
+        "by_approval_status": dict(db.execute(
             select(AIAsset.approval_status, func.count()).join(Asset, Asset.id == AIAsset.asset_id).where(ACTIVE)
-            .group_by(AIAsset.approval_status)).all()},
+            .group_by(AIAsset.approval_status)).all()),
         "unapproved_providers": [{"provider": p, "assets": c} for p, c in unapproved_providers],
         "findings": {"open": _count(db, ai_open), "critical_llm": _count(db, OPEN, Finding.domain == "ai_llm", Finding.risk_level == "critical"),
                      "by_domain": _group(db, Finding.domain, ai_open), "by_risk_level": _group(db, Finding.risk_level, ai_open),

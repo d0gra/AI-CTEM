@@ -9,6 +9,7 @@ without credentials. Only GET is used; no state-changing request is ever sent.
 
 import json
 import re
+from typing import Any
 from urllib.parse import urlsplit
 
 import yaml
@@ -83,7 +84,7 @@ def analyse(ctx: EngineContext, spec_url: str, doc: dict, allow_private: bool) -
         type="api", identifier=spec_url, name=info.get("title") or f"API at {urlsplit(spec_url).netloc}",
         attributes={"version": info.get("version"), "spec_version": doc.get("openapi") or doc.get("swagger"),
                     "servers": servers, "security_schemes": sorted(schemes), "spec_url": spec_url}))
-    common = {"asset": api, "source": ctx.source, "domain": "api"}
+    common: dict[str, Any] = {"asset": api, "source": ctx.source, "domain": "api"}
 
     def ev(summary: str, content: dict) -> list[EvidenceInput]:
         return [EvidenceInput("config", summary, {"spec_url": spec_url, **content})]

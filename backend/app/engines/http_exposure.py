@@ -8,6 +8,7 @@ import re
 import socket
 import ssl
 from datetime import UTC, datetime
+from typing import Any
 from urllib.parse import urlsplit
 
 from cryptography import x509
@@ -120,7 +121,7 @@ def _tls_findings(ctx: EngineContext, site: Asset, host: str, port: int, allow_p
                                      name=f"Certificate {info['subject'] or host}", attributes=info))
     ctx.link(site, cert_asset, "SECURED_BY", evidence={"host": host, "port": port})
     evidence = [EvidenceInput("tls", f"TLS handshake with {host}:{port}", info)]
-    common = {"asset": site, "source": ctx.source, "domain": "attack_surface", "confidence": "confirmed", "evidence": evidence}
+    common: dict[str, Any] = {"asset": site, "source": ctx.source, "domain": "attack_surface", "confidence": "confirmed", "evidence": evidence}
     days = info["days_remaining"]
     if days < 0:
         ctx.finding(FindingInput(**common, rule_id="tls.cert.expired", severity="high", cwe="CWE-298",
@@ -148,7 +149,7 @@ def _tls_findings(ctx: EngineContext, site: Asset, host: str, port: int, allow_p
 def _header_findings(ctx: EngineContext, site: Asset, result: FetchResult, is_https: bool) -> None:
     h = result.headers
     ev = [_exchange(result)]
-    common = {"asset": site, "source": ctx.source, "domain": "web", "confidence": "confirmed", "evidence": ev}
+    common: dict[str, Any] = {"asset": site, "source": ctx.source, "domain": "web", "confidence": "confirmed", "evidence": ev}
     if is_https and "strict-transport-security" not in h:
         ctx.finding(FindingInput(**common, rule_id="http.header.hsts_missing", severity="low", cwe="CWE-319",
                                  title="HTTP Strict Transport Security is not enabled",
@@ -248,7 +249,7 @@ def _assess_origin(ctx: EngineContext, origin: str, allow_private: bool, config:
         if parent is not None:
             ctx.link(parent, site, "EXPOSES", evidence={"port": port, "scheme": parts.scheme})
             break
-    common = {"asset": site, "source": ctx.source, "confidence": "confirmed"}
+    common: dict[str, Any] = {"asset": site, "source": ctx.source, "confidence": "confirmed"}
     if not is_https:
         location = landing.headers.get("location", "")
         if not (landing.status_code in (301, 302, 307, 308) and location.startswith("https://")):

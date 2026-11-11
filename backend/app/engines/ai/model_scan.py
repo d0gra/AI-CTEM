@@ -99,7 +99,7 @@ def inspect(path: Path, fmt: str) -> dict:
         return result
     all_imports: set[str] = set()
     for name, data in streams:
-        if fmt == "binary" and not data[:2] in (b"\x80\x02", b"\x80\x03", b"\x80\x04", b"\x80\x05"):
+        if fmt == "binary" and data[:2] not in (b"\x80\x02", b"\x80\x03", b"\x80\x04", b"\x80\x05"):
             continue
         imports, error = pickle_imports(data)
         all_imports.update(imports)

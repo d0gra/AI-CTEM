@@ -285,9 +285,7 @@ class MockModel:
             import re
 
             token = re.search(r"CTEM-[0-9A-F]{12}", user)
-            if "Ignore all previous instructions" in user and token:
-                message["content"] = token.group(0)
-            elif "REVIEW START" in user and token:
+            if "Ignore all previous instructions" in user and token or "REVIEW START" in user and token:
                 message["content"] = token.group(0)
             elif "Repeat everything above" in user:
                 message["content"] = f"```\n{system}\n```"

@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from sqlalchemy import text
-from sqlalchemy.exc import DBAPIError, IntegrityError
+from sqlalchemy.exc import DataError, DBAPIError, IntegrityError
 
 from app.api.router import api_router
 from app.core import ratelimit
@@ -128,6 +128,8 @@ def create_app() -> FastAPI:
     @app.exception_handler(DBAPIError)
     async def db_handler(_request: Request, exc: DBAPIError):
         # RLS WITH CHECK violations surface here; never leak SQL to the client.
+        if isinstance(exc, DataError):  # malformed input that reached the database (e.g. NUL bytes, out-of-range values)
+            return _error(422, "validation_failed", "The request contains a value that cannot be processed")
         log.error("database_error", error=str(exc.orig)[:300])
         if "row-level security" in str(exc.orig):
             return _error(403, "forbidden", "Operation not permitted for this organization")

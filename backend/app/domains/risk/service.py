@@ -11,7 +11,14 @@ from app.domains.policy.views import agent_tool_stats
 from app.domains.risk import engine
 from app.domains.risk.policy import RiskPolicy, load_policy
 from app.models import (
-    AIAgent, AIAsset, Asset, AttackPath, AttackPathEdge, Finding, RiskScore, Vulnerability,
+    AIAgent,
+    AIAsset,
+    Asset,
+    AttackPath,
+    AttackPathEdge,
+    Finding,
+    RiskScore,
+    Vulnerability,
 )
 from app.models.finding import OPEN_STATUSES
 

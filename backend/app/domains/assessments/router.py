@@ -5,7 +5,7 @@ from fastapi import APIRouter, File, Form, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from app.api.deps import Db, Page, Paging, Principal, audit_event, paginate, require
+from app.api.deps import Db, Paging, Principal, audit_event, paginate, require
 from app.core import storage
 from app.core.config import get_settings
 from app.core.errors import NotFound, ValidationFailed

@@ -6,6 +6,7 @@ index. No traffic is sent to the discovered hosts themselves.
 
 import ipaddress
 import secrets
+from typing import Any
 
 import dns.exception
 import dns.resolver
@@ -87,7 +88,7 @@ def _email_findings(ctx: EngineContext, asset, domain: str, txt: list[str], mx: 
     _, dmarc_txt = query(f"_dmarc.{domain}", "TXT")
     dmarc = [t for t in dmarc_txt if t.lower().startswith("v=dmarc1")]
     severity = "medium" if mx else "low"
-    common = {"asset": asset, "source": ctx.source, "domain": "attack_surface", "confidence": "confirmed", "cwe": "CWE-290"}
+    common: dict[str, Any] = {"asset": asset, "source": ctx.source, "domain": "attack_surface", "confidence": "confirmed", "cwe": "CWE-290"}
     if not spf:
         ctx.finding(FindingInput(
             **common, rule_id="dns.spf.missing", title=f"No SPF record published for {domain}", severity=severity,

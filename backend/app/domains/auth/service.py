@@ -14,8 +14,17 @@ from app.core.email import send_account_email
 from app.core.errors import Conflict, Forbidden, Unauthorized, ValidationFailed
 from app.core.permissions import BUILTIN_ROLES
 from app.core.security import (
-    DUMMY_HASH, decrypt_secret, encrypt_secret, hash_password, hash_token, new_token, new_totp_secret,
-    password_needs_rehash, totp_uri, verify_password, verify_totp,
+    DUMMY_HASH,
+    decrypt_secret,
+    encrypt_secret,
+    hash_password,
+    hash_token,
+    new_token,
+    new_totp_secret,
+    password_needs_rehash,
+    totp_uri,
+    verify_password,
+    verify_totp,
 )
 from app.db.base import utcnow
 from app.db.session import system_session
@@ -198,16 +207,15 @@ def login(email: str, password: str, totp_code: str | None) -> tuple[User, UserS
         if org is None or not org.is_active:
             raise Unauthorized("Invalid email or password")
         mfa_verified = False
-        if user.mfa_enabled:
-            if totp_code:
-                if not verify_totp(decrypt_secret(user.mfa_secret_encrypted or ""), totp_code):
-                    user.failed_login_count += 1
-                    audit.record(db, organization_id=user.organization_id, action="auth.login",
-                                 actor_user_id=user.id, actor_email=email, outcome="failure",
-                                 data={"reason": "bad_totp"})
-                    db.commit()
-                    raise Unauthorized("Invalid verification code")
-                mfa_verified = True
+        if user.mfa_enabled and totp_code:
+            if not verify_totp(decrypt_secret(user.mfa_secret_encrypted or ""), totp_code):
+                user.failed_login_count += 1
+                audit.record(db, organization_id=user.organization_id, action="auth.login",
+                             actor_user_id=user.id, actor_email=email, outcome="failure",
+                             data={"reason": "bad_totp"})
+                db.commit()
+                raise Unauthorized("Invalid verification code")
+            mfa_verified = True
         if password_needs_rehash(user.password_hash):
             user.password_hash = hash_password(password)
         user.failed_login_count, user.locked_until, user.last_login_at = 0, None, now

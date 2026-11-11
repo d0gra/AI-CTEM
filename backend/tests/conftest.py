@@ -30,7 +30,9 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, text  # noqa: E402
 
 from app.core.config import get_settings  # noqa: E402
+from app.core.logging import configure_logging  # noqa: E402
 
+configure_logging()
 PASSWORD = "Correct-Horse-Battery-9"
 
 

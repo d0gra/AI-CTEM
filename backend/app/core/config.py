@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_DEV_SECRET = "dev-only-secret-change-me-dev-only-secret-change-me"
+_DEV_SECRET = "dev-only-secret-change-me-dev-only-secret-change-me"  # noqa: S105  (rejected when CTEM_ENV=production)
 
 
 class Settings(BaseSettings):

@@ -22,8 +22,19 @@ from app.engines.ai_redteam.catalog import PROFILES, RELATED_ENGINES, TESTS
 from app.engines.ai_redteam.runner import RedTeamConfig
 from app.integrations.llm.client import LlmConfig
 from app.models import (
-    AIAgent, AIAssessment, AIAssessmentTest, AIAsset, AIIntegration, AIModel, Assessment, AssessmentRun, Asset, Evidence,
-    Finding, Integration, MCPServer,
+    AIAgent,
+    AIAssessment,
+    AIAssessmentTest,
+    AIAsset,
+    AIIntegration,
+    AIModel,
+    Assessment,
+    AssessmentRun,
+    Asset,
+    Evidence,
+    Finding,
+    Integration,
+    MCPServer,
 )
 from app.models.ai import APPROVAL_STATES, AUTONOMY_LEVELS
 from app.models.asset import AI_ASSET_TYPES

@@ -14,7 +14,14 @@ import httpx
 from pydantic import BaseModel, Field, HttpUrl, model_validator
 
 from app.core.net import safe_fetch
-from app.integrations.base import ApiError, ConnectionResult, ConnectorSpec, classify_status, register_connector, run_test
+from app.integrations.base import (
+    ApiError,
+    ConnectionResult,
+    ConnectorSpec,
+    classify_status,
+    register_connector,
+    run_test,
+)
 
 ANTHROPIC_API_URL = "https://api.anthropic.com"
 DEFAULT_CLAUDE_MODEL = "claude-opus-5-5"
@@ -121,8 +128,14 @@ class AnthropicClient:
 
     supports_system, supports_tools = True, True
 
-    def __init__(self, config: LlmConfig, creds: LlmCredentials, allow_private: bool = False, effort: str | None = None):
+    # Models for which a safety-classifier refusal can be retried server-side on a fallback model.
+    FALLBACK_MODELS = ("claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "claude-fable-5-2", "claude-fable-5-1")
+
+    def __init__(self, config: LlmConfig, creds: LlmCredentials, allow_private: bool = False, effort: str | None = None,
+                 refusal_fallback: bool = False):
         self.endpoint, self.model, self.effort = ANTHROPIC_API_URL, config.model or DEFAULT_CLAUDE_MODEL, effort
+        # Used only for the platform's own analysis. Red-team targets must answer as the model under test.
+        self.refusal_fallback = refusal_fallback and self.model in self.FALLBACK_MODELS
         self.client = anthropic.Anthropic(api_key=creds.api_key, max_retries=2, timeout=120.0)
 
     def chat(self, user, *, system=None, tools=None, max_tokens=1024) -> ChatResult:
@@ -134,7 +147,10 @@ class AnthropicClient:
         if self.effort:
             params["output_config"] = {"effort": self.effort}
         try:
-            response = self.client.messages.create(**params)
+            if self.refusal_fallback:
+                response = self.client.beta.messages.create(betas=["server-side-fallback-2026-07-01"], fallbacks="default", **params)
+            else:
+                response = self.client.messages.create(**params)
         except anthropic.AuthenticationError as exc:
             raise ApiError(f"Authentication failed: {exc.message}", "auth", 401) from exc
         except anthropic.PermissionDeniedError as exc:

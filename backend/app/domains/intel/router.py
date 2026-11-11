@@ -6,7 +6,16 @@ from sqlalchemy import func, or_, select
 from app.api.deps import Db, Paging, Principal, audit_event, like_escape, paginate, require
 from app.core.errors import NotFound, ValidationFailed
 from app.integrations.intel import sources
-from app.models import AIFinding, Asset, AttackPath, AttackPathEdge, Finding, IntelSyncState, ThreatIntelligence, Vulnerability
+from app.models import (
+    AIFinding,
+    Asset,
+    AttackPath,
+    AttackPathEdge,
+    Finding,
+    IntelSyncState,
+    ThreatIntelligence,
+    Vulnerability,
+)
 from app.models.finding import OPEN_STATUSES
 from app.workers.queue import JobContext, enqueue, job_handler
 

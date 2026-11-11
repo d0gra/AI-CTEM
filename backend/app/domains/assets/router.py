@@ -6,17 +6,32 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, or_, select
 
-from app.api.deps import CurrentUser, Db, Page, Paging, Principal, audit_event, like_escape, paginate, require
+from app.api.deps import Db, Page, Paging, Principal, audit_event, like_escape, paginate, require
 from app.core.errors import Conflict, NotFound, ValidationFailed
 from app.db.base import utcnow
 from app.domains.assets import scope as scope_service
 from app.domains.assets.service import AssetSpec, link_assets, upsert_asset
 from app.models import (
-    AIAgent, AIAsset, AIModel, Asset, AssetDiscoveryEvent, AssetRelationship, Finding, MCPServer, ScopeTarget,
-    Team, User,
+    AIAgent,
+    AIAsset,
+    AIModel,
+    Asset,
+    AssetDiscoveryEvent,
+    AssetRelationship,
+    Finding,
+    MCPServer,
+    ScopeTarget,
+    Team,
+    User,
 )
 from app.models.asset import (
-    AI_ASSET_TYPES, ASSET_TYPES, CRITICALITIES, ENVIRONMENTS, EXPOSURES, RELATIONSHIP_TYPES, SENSITIVITIES,
+    AI_ASSET_TYPES,
+    ASSET_TYPES,
+    CRITICALITIES,
+    ENVIRONMENTS,
+    EXPOSURES,
+    RELATIONSHIP_TYPES,
+    SENSITIVITIES,
 )
 from app.models.finding import OPEN_STATUSES
 
