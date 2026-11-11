@@ -89,6 +89,8 @@ def _node_level(asset: Asset, findings: list[Finding], is_entry: bool) -> tuple[
         return "theoretical", best
     if asset.type in PASS_THROUGH_TYPES and not is_entry:
         return "verified", None  # holding an identity or resolving a name needs no further weakness
+    if asset.type == "data_source" and is_entry:
+        return "verified", None  # attacker-writable content is the premise of the path, not a weakness to prove
     return "theoretical", None
 
 
@@ -107,7 +109,10 @@ def _is_target(asset: Asset) -> bool:
 
 
 def find_paths(assets: dict[uuid.UUID, Asset], relationships: list[AssetRelationship],
-               findings_by_asset: dict[uuid.UUID, list[Finding]]) -> list[Candidate]:
+               findings_by_asset: dict[uuid.UUID, list[Finding]], gated_agents: set[uuid.UUID] | None = None) -> list[Candidate]:
+    """`gated_agents`: agents whose high-impact tools all require human approval. Tool use by such
+    an agent is only a theoretical step, because a person must approve the action."""
+    gated_agents = gated_agents or set()
     adjacency: dict[uuid.UUID, list[tuple[uuid.UUID, AssetRelationship, str | None, str]]] = {}
     for rel in relationships:
         if rel.source_asset_id not in assets or rel.target_asset_id not in assets:
@@ -137,6 +142,8 @@ def find_paths(assets: dict[uuid.UUID, Asset], relationships: list[AssetRelation
                 if nxt in cand.nodes:
                     continue
                 level = min(node_level, _edge_level(rel), key=lambda lv: RANK[lv])
+                if rel.type == "INVOKES_TOOL" and current in gated_agents:
+                    level, action = "theoretical", action + " (requires a human to approve the action)"
                 new_cost = cost + COST[level]
                 if new_cost >= best.get(nxt, float("inf")):
                     continue
@@ -178,7 +185,12 @@ def compute(db: Session, organization_id: uuid.UUID) -> dict:
     findings_by_asset: dict[uuid.UUID, list[Finding]] = {}
     for f in db.execute(select(Finding).where(Finding.status.in_(OPEN_STATUSES))).scalars():
         findings_by_asset.setdefault(f.asset_id, []).append(f)
-    candidates = find_paths(assets, relationships, findings_by_asset)
+    from app.domains.policy.views import agent_tool_stats
+    from app.models import AIAgent
+
+    gated = {a.asset_id for a in db.execute(select(AIAgent)).scalars()
+             if a.human_approval_required and agent_tool_stats(a.tools or [])[1] == 0}
+    candidates = find_paths(assets, relationships, findings_by_asset, gated)
     scored = []
     for cand in candidates:
         classification = _classify(cand)
