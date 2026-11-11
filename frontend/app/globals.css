@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f1f3f6;
+  --border: #dfe3ea;
+  --text: #171c26;
+  --muted: #5d6676;
+  --accent: #1d4ed8;
+  --accent-fg: #ffffff;
+  --critical: #b42318;
+  --high: #c2410c;
+  --medium: #a16207;
+  --low: #1d6fa5;
+  --info: #5d6676;
+  --ok: #15803d;
+}
+[data-theme="dark"] {
+  --bg: #0e1116;
+  --surface: #151a22;
+  --surface-2: #1b212b;
+  --border: #283040;
+  --text: #e6e9ef;
+  --muted: #98a2b3;
+  --accent: #6b9bff;
+  --accent-fg: #0b1220;
+  --critical: #f97066;
+  --high: #fb923c;
+  --medium: #eab308;
+  --low: #60a5fa;
+  --info: #98a2b3;
+  --ok: #4ade80;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-critical: var(--critical);
+  --color-high: var(--high);
+  --color-medium: var(--medium);
+  --color-low: var(--low);
+  --color-info: var(--info);
+  --color-ok: var(--ok);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--text); font-family: var(--font-sans); font-size: 14px; line-height: 1.45; }
+*:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+dialog::backdrop { background: rgb(0 0 0 / 0.45); }
+.tabular { font-variant-numeric: tabular-nums; }
+.react-flow__attribution { display: none; }
