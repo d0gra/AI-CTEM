@@ -305,7 +305,8 @@ def run_sync(db: Session, source: str) -> dict:
     except Exception as exc:
         db.rollback()
         state = _state(db, source)
-        state.last_attempt_at, state.last_error = utcnow(), f"{type(exc).__name__}: {exc}"[:1000]
+        detail = str(getattr(exc, "orig", None) or exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
+        state.last_attempt_at, state.last_error = utcnow(), f"{type(exc).__name__}: {detail}"[:300]
         db.commit()
         raise
     state = _state(db, source)

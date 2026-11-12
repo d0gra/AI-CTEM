@@ -31,6 +31,7 @@ class LoginIn(BaseModel):
 class UserOut(BaseModel):
     email_verified: bool = False
     email_verification_required: bool = False
+    email_delivery_configured: bool = False
     id: uuid.UUID
     organization_id: uuid.UUID
     email: str
@@ -137,6 +138,7 @@ def me(principal: Principal = Depends(get_principal)) -> UserOut:
         verified = bool(user and user.email_verified_at)
     return UserOut(
         email_verified=verified, email_verification_required=get_settings().require_email_verification,
+        email_delivery_configured=bool(get_settings().smtp_host),
         id=principal.user_id, organization_id=principal.organization_id, email=principal.email,
         full_name=principal.full_name, role=principal.role_key, permissions=sorted(principal.permissions),
         mfa_enabled=principal.mfa_enabled, mfa_verified=principal.mfa_verified,

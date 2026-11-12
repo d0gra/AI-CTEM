@@ -2,7 +2,7 @@
 
 A multi-tenant Continuous Threat Exposure Management platform that discovers assets, assesses them, scores findings by contextual risk, derives attack paths from evidence-backed relationships, and tracks remediation through verified retest. AI systems (model endpoints, agents, MCP servers, RAG stores, model artifacts) are inventoried and assessed in the same data model as conventional infrastructure.
 
-Status: `0.1.0`. The core workflows below are implemented and covered by automated tests. Sections marked *not implemented* or *import only* are exactly that; see [Known limitations](#known-limitations).
+Version `0.2.0`. What has and has not been verified against real systems is listed under [Available integrations](#available-integrations) and [Known limitations](#known-limitations).
 
 ## Product overview
 
@@ -163,6 +163,8 @@ All settings are environment variables with the `CTEM_` prefix; the complete lis
 | `CTEM_ALLOW_PRIVATE_TARGETS` | Allows assessing private addresses that are also authorized in scope. Default `false`. |
 | `CTEM_REPO_SCAN_ROOT` | Directory on workers under which repositories may be analysed. Empty disables path targets. |
 | `CTEM_ALLOW_REGISTRATION` | Self-service organization registration. Disable after onboarding. |
+| `CTEM_TRUSTED_PROXIES` | CIDRs of reverse proxies whose `X-Forwarded-For` is trusted for the client address (rate limits, audit log). |
+| `CTEM_ALLOW_SERVER_CLAUDE_CREDENTIALS` | Lets organizations use the server's own Claude credentials for AI analysis. Default `false`. |
 | `CTEM_BACKEND_URL` | Frontend build-time setting: the API origin the Next.js server proxies to. |
 
 ## Database setup
@@ -214,7 +216,7 @@ A worker executes queued jobs (assessments, imports, reports, notification deliv
 ## Running tests
 
 ```bash
-cd backend && uv run pytest              # 86 tests; needs the PostgreSQL from scripts/dev-db.sh
+cd backend && uv run pytest              # 102 tests; needs the PostgreSQL from scripts/dev-db.sh
 cd frontend && pnpm test                 # 20 tests
 cd frontend && pnpm lint && pnpm typecheck && pnpm build
 ```
@@ -223,27 +225,39 @@ Backend tests run against a real PostgreSQL database (`ctem_test`) because row-l
 
 ## Available integrations
 
-The catalogue at **Integrations → Catalogue** (`GET /api/v1/integrations/catalog`) reports the same status values shown here.
+The **Integrations** page lists every integration with how it is used: *connect* (the platform calls the system's API with stored credentials), *tool* (workers run the tool; its reports can also be uploaded), *upload* (reports are uploaded and normalised) and *feed* (public data synchronised by workers). The last column records what each was verified against during development.
 
-| Integration | Status | Notes |
+| Integration | How it is used | Verified against |
 | --- | --- | --- |
-| Nmap | Implemented, validated by execution | TCP connect scan run by workers; XML import |
-| Nuclei | Implemented, validated by execution | Run by workers; JSON/JSONL import |
-| Trivy, Grype, Semgrep, Gitleaks, Checkov | Implemented; import parsers tested with fixtures | Workers execute them when the binary is installed. Execution was not validated (binaries unavailable during development) |
-| OWASP ZAP, Prowler, SARIF, CycloneDX/SPDX | Import only | |
-| AWS | Implemented; tested against moto | Not validated against a live AWS account |
-| Azure, GCP | Import only | Through Prowler OCSF output |
-| CISA KEV, EPSS, NVD, OSV, ATT&CK, ATLAS | Implemented; tested with fixtures | Live synchronisation not exercised in tests |
-| GitHub Issues, GitLab Issues, Jira Cloud | Implemented; tested with fixtures | Not validated against live accounts |
-| Webhook (HMAC-signed), Slack, Teams, email | Implemented; webhook validated against a local receiver | Slack/Teams payloads not validated against the live services |
-| LLM endpoint: OpenAI-compatible, Anthropic, Gemini, custom HTTP | Implemented; tested with fixtures | Anthropic uses the official SDK. Not validated against live providers |
-| GitHub/GitLab repository connectors, ScoutSuite, Bedrock/Hugging Face connectors | Not implemented | Repositories are analysed from a local checkout |
+| Nmap, Nuclei | Tool | Real binaries scanning local listeners |
+| Trivy, Grype, Semgrep, Gitleaks, Checkov | Tool, or report upload | Real binaries (Trivy 0.76, Grype 0.121, Semgrep 1.185, Gitleaks 8.30, Checkov 3.4) scanning a sample repository |
+| OWASP ZAP, Prowler (AWS, Azure, Google Cloud, Kubernetes), SARIF, CycloneDX/SPDX SBOM | Report upload | Representative report files |
+| CISA KEV, FIRST EPSS, NIST NVD, MITRE ATT&CK, MITRE ATLAS | Feed | The live public sources (1,779 KEV entries, 765 ATT&CK and 278 ATLAS objects, CVSS 3.1 and 4.0 from NVD) |
+| OSV | Queried during dependency and SBOM analysis | The live OSV API |
+| DNS and certificate transparency | Built-in discovery | Live public DNS and crt.sh |
+| AWS | Connect (read-only) | moto, an in-process emulation of the AWS APIs. Not yet run against a real account |
+| GitHub Issues, GitLab Issues, Jira Cloud | Connect | Recorded API request and response shapes. Not yet run against real accounts |
+| Webhook (HMAC-signed), Slack, Microsoft Teams | Connect | Local receivers. Not yet posted to real Slack or Teams workspaces |
+| Email (SMTP) | Built-in | A local SMTP server |
+| Claude | Connect (Administration → AI analysis) | The official SDK against a recorded API stand-in. Not yet called with a real key |
+| Model endpoints for the AI red team: OpenAI-compatible, Claude, Gemini, custom HTTP | Connect | Recorded API stand-ins and the local lab model |
+
+Not available: GitHub/GitLab as repository sources (repositories are analysed from a path on the workers), native Azure and Google Cloud connectors (use Prowler upload), ScoutSuite, live Kubernetes inventory.
 
 Details and required permissions: [docs/integrations.md](docs/integrations.md).
 
 ## Security modules
 
 Seventeen assessment engines are registered (`GET /api/v1/assessments/engines`): `dns_discovery`, `http_exposure`, `nmap_scan`, `nuclei_scan`, `openapi_analysis`, `scanner_import`, `trivy_scan`, `grype_scan`, `semgrep_scan`, `gitleaks_scan`, `checkov_scan`, `aws_posture`, `repository_analysis`, `mcp_probe`, `ai_endpoint_probe`, `ai_posture_review`, `ai_redteam`. Each declares whether it is active (sends traffic to targets), its accepted target kinds, required tool or connector, and a typed configuration schema from which the UI builds its form.
+
+## Connecting Claude
+
+AI features (finding and attack-path explanations, and the executive briefing on the Overview page) use Claude. An organization administrator connects it under **Administration → AI analysis**:
+
+- **Claude Console API key.** Create a key at platform.claude.com → Settings → API keys. The platform checks it against the Models API (which is free), lists the models the key can use, and stores the key encrypted.
+- **Server sign-in.** When the deployment sets `CTEM_ALLOW_SERVER_CLAUDE_CREDENTIALS=true`, organizations can instead use the server's own credentials, resolved by the Anthropic SDK: `ANTHROPIC_API_KEY`, an `ant auth login` sign-in for local use, or workload identity federation in production. Nothing is stored in the platform, and usage is billed to the operator's Console organization, so leave this off on shared deployments.
+
+Usage is billed to a Claude Console organization. **Claude Pro, Max and Team plans do not include API access** and cannot be used for this. The default model is `claude-opus-5-5`; requests enable Claude's server-side refusal fallback. Monthly token budgets, per-request limits and the option to include evidence in prompts are set on the same page.
 
 ## AI security capabilities
 
@@ -271,7 +285,9 @@ curl -s "localhost:8000/api/v1/findings?open_only=true&risk_level=critical&sort=
 - Email and password with Argon2id; account lockout; TOTP MFA; opaque server-side sessions (stored hashed) with idle and absolute expiry and per-session revocation; password reset and email verification with single-use tokens.
 - Browsers use an `HttpOnly`, `SameSite=Lax` cookie plus a CSRF token on unsafe methods. API clients use `Authorization: Bearer`.
 - 33 permissions; nine built-in roles (Super Administrator, Organization Administrator, Security Administrator, Security Analyst, Vulnerability Manager, Cloud Security Engineer, Red Team Operator, Auditor, Read-only User) plus custom roles. Nobody can grant a permission they do not hold, change their own role, or administer a more privileged account.
-- OAuth/OIDC single sign-on is **not implemented**.
+- Optional enforcement of email verification (`CTEM_REQUIRE_EMAIL_VERIFICATION`).
+- Platform operators (`python -m app.cli grant-super-admin <email>`) get an **All organizations** console to see each organization's size and suspend or reinstate it, without access to its data.
+- OAuth/OIDC single sign-on is not available.
 
 ## Multi-tenancy
 
@@ -311,7 +327,7 @@ State lives in PostgreSQL and object storage. Back up both; Redis holds only rat
 
 ## Known limitations
 
-- **Single sign-on** (OAuth/OIDC, SAML) is not implemented. WebSockets are not used; the UI polls.
+- **Single sign-on** (OAuth/OIDC, SAML) is not available. WebSockets are not used; the UI polls.
 - **Cloud.** Only AWS has a native connector, and it covers the services listed above (no Lambda, ELB, Secrets Manager or VPC flow-log checks). Azure and GCP rely on Prowler import.
 - **Kubernetes** live inventory is not implemented; Kubernetes findings arrive through Trivy/Checkov/Prowler import or the EKS endpoint check.
 - **Web application testing** is limited to passive analysis and safe read-only probes. There is no crawler and no injection testing (SQLi, XSS, SSRF); use ZAP, Nuclei or Semgrep and import the results. Authenticated web/API testing with stored test identities is not implemented.
@@ -320,10 +336,10 @@ State lives in PostgreSQL and object storage. Back up both; Redis holds only rat
 - **AI red team** tests are single-turn. Multi-turn, multimodal and adaptive attacks are not covered. Retrieval and tenant-isolation tests need operator-planted canaries.
 - **Shadow AI** covers analysed repositories, probed endpoints and registered assets only; SaaS and browser-extension usage is not observed.
 - **Threat intelligence.** NVD enrichment is per-CVE and rate limited; there is no bulk NVD mirror, vendor-advisory ingestion or indicator (IOC) management. GitHub Security Advisories are covered through OSV.
-- **Live validation pending** for AWS, ticketing systems, Slack/Teams, LLM providers and the threat-intel feeds (fixture-tested), for the path-based scanner runners, and for the Docker and Kubernetes assets.
+- **Not yet run against real accounts:** AWS, GitHub/GitLab/Jira, Slack and Teams workspaces, and the Claude, OpenAI and Gemini APIs. The Docker and Kubernetes files have not been built or deployed.
 - **Type checking.** `mypy` reports 15 findings (typing strictness, no known runtime defects); the CI step is advisory.
 - **Scale.** Policy evaluation and attack-path computation load an organization's assets into memory; they have been exercised with hundreds of assets, not hundreds of thousands. There are no load tests.
-- **Demo mode** (`CTEM_DEMO_MODE`) is a reserved setting; no demo data set ships. Use `scripts/lab.py` for realistic local data.
+- No sample data set ships. `scripts/lab.py` runs deliberately weak local targets, including an HTTPS listener with a short-lived self-signed certificate.
 
 ## Roadmap
 

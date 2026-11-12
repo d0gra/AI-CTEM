@@ -33,6 +33,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "aiosmtpd>=1.4.6",
     "moto[cloudtrail,ec2,eks,iam,kms,rds,s3,sts]>=5.2.5",
     "mypy>=2.4.1",
     "pytest>=9.2.0",

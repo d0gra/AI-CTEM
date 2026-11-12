@@ -2,15 +2,14 @@
 
 ## Connector framework
 
-A connector is a `ConnectorSpec` (`backend/app/integrations/base.py`) registered at import time: key, category, configuration and credential schemas (Pydantic models, published as JSON Schema to the UI), a connection test, required permissions and an honest status.
+A connector is a `ConnectorSpec` (`backend/app/integrations/base.py`) registered at import time: key, category, configuration and credential schemas (Pydantic models, published as JSON Schema to the UI), a connection test, required permissions, and its `mode`:
 
-| Status | Meaning |
+| Mode | Meaning |
 | --- | --- |
-| `available` | Implemented and covered by automated tests |
-| `import_only` | Results are ingested from files; the platform does not call the system |
-| `reference` | Public data source synchronised by workers; nothing to configure |
-
-`live_validated` is true only where the code path ran against the real thing during development (Nmap, Nuclei, generic webhook). Everything else is tested against controlled fixtures and is labelled "live validation pending" in the UI.
+| `connection` | The platform calls the system's API with stored credentials |
+| `tool` | Workers execute the tool locally; its reports can also be uploaded |
+| `upload` | Reports are uploaded and normalised |
+| `feed` | A public data source synchronised by workers |
 
 Common behaviour (`HttpApi`): SSRF-guarded transport, bounded retries with backoff on 429/5xx and network errors, `Retry-After` support, RFC 8288 `Link` pagination, minimum request interval, and classified errors (`auth`, `permission`, `rate_limit`, `config`, `network`, `upstream`). Connection tests update the integration's health and raise a notification on a new failure. Credentials are stored as an encrypted JSON document and are write-only through the API.
 
@@ -22,7 +21,7 @@ Common behaviour (`HttpApi`): SSRF-guarded transport, bounded retries with backo
 | Nuclei | `nuclei -jsonl -duc -ni`; `dos`, `fuzz`, `intrusive` tags excluded by default | JSON / JSONL | `nuclei` and templates |
 | Trivy | `trivy fs` (vuln, misconfig, secret) | JSON (`--format json`), including image scans | `trivy` |
 | Grype | `grype dir:` | JSON (`-o json`) | `grype` |
-| Semgrep | `semgrep scan --config auto --metrics off` | JSON | `semgrep` |
+| Semgrep | `semgrep scan --config p/default --metrics off` (registry rules; `auto` is refused with metrics off) | JSON | `semgrep` |
 | Gitleaks | `gitleaks dir --redact` | JSON | `gitleaks` |
 | Checkov | `checkov -d` | JSON | `checkov` |
 | OWASP ZAP | — | Traditional JSON report | — |
@@ -69,7 +68,11 @@ GitHub Issues (fine-grained token with Issues read/write on one repository), Git
 
 Generic webhook (JSON body; optional `X-CTEM-Signature: sha256=<hmac of "timestamp.body">`), Slack incoming webhook (Block Kit), Microsoft Teams workflow webhook (Adaptive Card), and email through SMTP. Webhook destinations must be publicly routable. Rules select event types and a minimum severity. Repeats of the same event for the same entity within 24 hours increment a counter instead of sending again.
 
-## LLM endpoints (`llm`)
+## Claude (`claude`)
+
+Connected under Administration → AI analysis, not from the Integrations page. Credential source is either a Claude Console API key (stored encrypted) or, when `CTEM_ALLOW_SERVER_CLAUDE_CREDENTIALS=true`, the server's own credentials via the Anthropic SDK's default chain. The connection test lists models through the Models API, which is not billed. Claude Pro, Max and Team plans do not include API access.
+
+## Model endpoints for the AI red team (`llm`)
 
 One connector with four styles: `openai_compatible` (OpenAI, Azure OpenAI v1, vLLM, Ollama `/v1`, NVIDIA NIM, LiteLLM), `anthropic` (official SDK; default model `claude-opus-5-5`), `gemini` (REST), and `custom_http` (an application's own chat endpoint, with a request template and response path). Used as AI red-team targets and, if selected, as the provider for AI-assisted analysis. The connection test sends one short prompt, which the provider bills.
 
@@ -78,4 +81,4 @@ One connector with four styles: `openai_compatible` (OpenAI, Azure OpenAI v1, vL
 1. Define config and credential models and a `test(config, credentials) -> ConnectionResult`.
 2. `register_connector(ConnectorSpec(...))` in a module imported by `app/engines/registry.py`.
 3. If it produces findings, register an engine with `requires_connector`.
-4. Add fixture-based tests. Set `live_validated=True` only after running against the real system.
+4. Add tests, and record in the README what the connector was verified against.

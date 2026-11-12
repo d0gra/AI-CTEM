@@ -2,6 +2,26 @@
 
 All notable changes are recorded here. The format follows Keep a Changelog; versions follow Semantic Versioning.
 
+## [0.2.0] - 2026-11-11
+
+### Added
+- Connect Claude (Administration → AI analysis): Console API key or server credentials, live model list, connection test, AI executive briefing on the Overview page.
+- Platform operator console to suspend and reinstate organizations.
+- Screens for teams, custom roles, notification rules and delivery log, background jobs, policy exceptions, organization settings, assessment editing/pausing/deletion/cancellation, integration editing and credential rotation, asset tags and business unit, relationship removal, MFA turn-off.
+- Forgot-password, reset-password and email-verification pages; optional enforced email verification.
+- Stale-asset detection; `asset.discovered` and `risk.acceptance_expired` notifications; `discovery:run` gates discovery engines.
+
+### Fixed
+- Client addresses behind the web proxy: rate limits and the audit log now use the real client address, read only from trusted proxies.
+- NVD enrichment failed on CVSS 4.0 vectors and one bad record discarded the batch.
+- Scanners installed outside system directories were not found by workers.
+- Semgrep runs failed (`--config auto` is refused with metrics off); Checkov findings had no severity; scanner findings showed absolute paths.
+- DNS discovery resolved names one at a time and stalled on slow resolvers (405s → 34s for 60 names).
+- Tool version checks ran on every page load.
+
+### Removed
+- Unused settings (`CTEM_DEMO_MODE`, `CTEM_SENTRY_DSN`), unused columns, and catalogue entries with no implementation behind them (Azure, Google Cloud, Bedrock, Hugging Face).
+
 ## [0.1.0] - 2026-11-11
 
 Initial release.

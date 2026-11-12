@@ -89,6 +89,11 @@ def _probe_tool(spec: EngineSpec) -> dict:
         version = next((ln for ln in lines if any(ch.isdigit() for ch in ln) and "WARN" not in ln.upper()), None)
     except (OSError, subprocess.SubprocessError):
         pass
+    if version:  # normalise banners such as "[INF] Nuclei Engine Version: v3.11.1" to "nuclei 3.11.1"
+        import re
+
+        match = re.search(r"v?(\d+(?:\.\d+)+)", version)
+        version = f"{spec.requires_tool} {match.group(1)}" if match else version
     return {"required": spec.requires_tool, "available": True, "version": (version or "")[:120] or None}
 
 

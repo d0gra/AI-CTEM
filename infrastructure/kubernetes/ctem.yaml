@@ -18,6 +18,8 @@ data:
   CTEM_STORAGE_BACKEND: s3
   CTEM_S3_BUCKET: ctem-evidence
   CTEM_LOG_JSON: "true"
+  # Pod network range of the web tier (the only caller of the API, enforced by the NetworkPolicy below).
+  CTEM_TRUSTED_PROXIES: 10.0.0.0/8
 ---
 # Example only: create this from a secret manager (External Secrets, Sealed Secrets, CSI driver).
 apiVersion: v1

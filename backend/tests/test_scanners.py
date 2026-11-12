@@ -211,7 +211,7 @@ def test_nmap_executes_against_authorised_local_target(org, drain, allow_private
     drain()
     run_ = org.ok("GET", f"/assessment-runs/{run_['id']}")
     assert run_["status"] == "succeeded", run_
-    assert "Nmap" in run_["summary"]["tool_version"]
+    assert run_["summary"]["tool_version"].startswith("nmap ")
     service = org.ok("GET", "/assets?type=network_service")["items"][0]
     assert service["identifier"] == f"127.0.0.1:{port}/tcp" and service["exposure"] == "internal"
 
