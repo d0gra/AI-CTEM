@@ -1,6 +1,7 @@
 [project]
 name = "ctem-backend"
 version = "0.1.0"
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.1",

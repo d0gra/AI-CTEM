@@ -14,7 +14,7 @@ One-click sign-in for every role, no sign-up needed · password `Demo-CTEM-2026!
 
 [![CI](https://github.com/d0gra/AI-CTEM/actions/workflows/ci.yml/badge.svg)](https://github.com/d0gra/AI-CTEM/actions/workflows/ci.yml)
 ![Version](https://img.shields.io/badge/version-0.3.0-informational)
-![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+![License](https://img.shields.io/badge/license-MIT-blue)
 ![Python](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
@@ -341,4 +341,4 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). Report vulner
 
 ## License
 
-Licensed under the [Apache License 2.0](LICENSE).
+Licensed under the [MIT License](LICENSE).

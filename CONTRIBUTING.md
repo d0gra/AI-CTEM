@@ -10,4 +10,4 @@
 
 Report security vulnerabilities privately as described in [SECURITY.md](SECURITY.md), not in public issues.
 
-By contributing you agree that your contributions are licensed under the Apache License 2.0.
+By contributing you agree that your contributions are licensed under the MIT License.
