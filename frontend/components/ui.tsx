@@ -31,20 +31,32 @@ export function Button({ variant = "secondary", size = "md", loading, className,
 const fieldClass =
   "w-full rounded-md border border-border bg-surface px-3 text-sm text-text placeholder:text-muted focus:border-accent disabled:opacity-60";
 
+// Utility groups a caller may override. Without this, a default such as w-full can win over a
+// caller's w-auto, because the order of utilities in the generated CSS decides, not the class order.
+const OVERRIDABLE: [RegExp, RegExp][] = [
+  [/^w-/, /^w-/], [/^h-/, /^h-/], [/^min-h-/, /^min-h-/], [/^py-/, /^py-/], [/^pr-/, /^p[rx]-/], [/^px-/, /^px-/], [/^text-sm$/, /^text-(xs|sm|base|lg|\[)/],
+];
+
+function field(defaults: string, className?: string) {
+  const own = (className ?? "").split(/\s+/).filter(Boolean);
+  const kept = defaults.split(" ").filter((d) => !OVERRIDABLE.some(([mine, theirs]) => mine.test(d) && own.some((c) => theirs.test(c))));
+  return clsx(kept, own);
+}
+
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input({ className, ...props }, ref) {
-  return <input ref={ref} {...props} className={clsx(fieldClass, "h-9", className)} />;
+  return <input ref={ref} {...props} className={field(`${fieldClass} h-9`, className)} />;
 });
 
 export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(function Select({ className, children, ...props }, ref) {
   return (
-    <select ref={ref} {...props} className={clsx(fieldClass, "h-9 pr-8", className)}>
+    <select ref={ref} {...props} className={field(`${fieldClass} h-9 pr-8`, className)}>
       {children}
     </select>
   );
 });
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(function Textarea({ className, ...props }, ref) {
-  return <textarea ref={ref} {...props} className={clsx(fieldClass, "min-h-20 py-2", className)} />;
+  return <textarea ref={ref} {...props} className={field(`${fieldClass} min-h-20 py-2`, className)} />;
 });
 
 export function Field({ label, error, hint, children }: { label: string; error?: string; hint?: string; children: ReactNode }) {

@@ -1,0 +1,22 @@
+# Render Blueprint for the public demo (Dashboard → New → Blueprint → this repository).
+# One Docker web service running Dockerfile.demo: PostgreSQL, API, worker and web in a single container.
+# Data is not persistent; each deploy or restart starts a clean demo. See docs/demo.md.
+services:
+  - type: web
+    name: ctem-demo
+    runtime: docker
+    dockerfilePath: ./Dockerfile.demo
+    dockerContext: .
+    # The demo uses about 430 MB at rest (measured), so 512 MB plans (free, starter) run out of memory
+    # under load. Standard has 2 GB.
+    plan: standard
+    healthCheckPath: /api/v1/demo
+    envVars:
+      - key: CTEM_DEMO_MODE
+        value: "true"
+      # Shared password for every demo account, shown on the sign-in page. Change it here if you like.
+      - key: CTEM_DEMO_PASSWORD
+        value: Demo-CTEM-2026!
+      # Set to "false" for an empty demo organization without the analysed sample repository.
+      - key: CTEM_DEMO_SAMPLE_DATA
+        value: "true"

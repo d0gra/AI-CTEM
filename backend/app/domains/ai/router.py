@@ -52,8 +52,10 @@ class ToolIn(BaseModel):
 
 class AIAssetIn(BaseModel):
     type: Literal[AI_ASSET_TYPES]  # type: ignore[valid-type]
-    identifier: str = Field(min_length=1, max_length=1024)
+    identifier: str = Field(min_length=1, max_length=1024, description="URL, service name or other stable identifier")
     name: str = Field(min_length=1, max_length=512)
+    criticality: Literal["critical", "high", "medium", "low"] = "medium"
+    data_sensitivity: Literal["restricted", "confidential", "internal", "public", "unknown"] = "unknown"
     environment: Literal["production", "staging", "development", "test", "unknown"] = "unknown"
     exposure: Literal["internet", "internal", "private", "unknown"] = "unknown"
     provider: str | None = Field(default=None, max_length=48)
@@ -174,14 +176,14 @@ def list_ai_assets(db: Db, paging: Paging, _: Principal = require("ai:read"), q:
 @router.post("/ai/assets", status_code=201)
 def register_ai_asset(body: AIAssetIn, db: Db, principal: Principal = require("ai:write")) -> dict:
     asset, created = upsert_asset(db, AssetSpec(type=body.type, identifier=body.identifier, name=body.name, environment=body.environment,
-                                                exposure=body.exposure, ai={"provider": body.provider, "managed": True}),
+                                                exposure=body.exposure, criticality=body.criticality, data_sensitivity=body.data_sensitivity,
+                                                ai={"provider": body.provider, "managed": True}),
                                   source="manual", actor_user_id=principal.user_id)
-    if body.type == "ai_agent" and db.get(AIAgent, asset.id) is None:
-        db.add(AIAgent(organization_id=asset.organization_id, asset_id=asset.id))
-    if body.type == "ai_model" and db.get(AIModel, asset.id) is None:
-        db.add(AIModel(organization_id=asset.organization_id, asset_id=asset.id, model_name=body.name))
     db.flush()
     audit_event(db, principal, "ai.asset_registered", entity_type="asset", entity_id=asset.id, data={"type": body.type, "created": created})
+    from app.domains.ai.posture import request_review
+
+    request_review(db, principal.organization_id)
     return _detail(db, asset)
 
 
@@ -243,6 +245,9 @@ def update_ai_posture(asset_id: uuid.UUID, body: AIPosturePatch, db: Db, princip
                 setattr(model, f, changes[f])
     db.flush()
     audit_event(db, principal, "ai.posture_updated", entity_type="asset", entity_id=asset.id, data={"fields": sorted(changes)})
+    from app.domains.ai.posture import request_review
+
+    request_review(db, principal.organization_id)
     if dangerous_change:
         from app.domains.notifications.service import notify
 

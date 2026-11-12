@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from app.api.deps import Principal, require
+from app.core.config import get_settings
 from app.core.errors import Forbidden, NotFound
 from app.db.session import system_session
 from app.domains.audit import service as audit
@@ -42,6 +43,8 @@ def list_organizations(_: Principal = require("platform:admin")) -> list[dict]:
 
 @router.patch("/organizations/{organization_id}")
 def set_organization_status(organization_id: uuid.UUID, body: OrgStatusIn, principal: Principal = require("platform:admin")) -> dict:
+    if get_settings().demo_mode and not body.is_active:
+        raise Forbidden("Organizations cannot be suspended on the public demo")
     if organization_id == principal.organization_id and not body.is_active:
         raise Forbidden("You cannot suspend your own organization")
     with system_session() as db:

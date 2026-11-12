@@ -21,6 +21,7 @@ export default function AttackPathsPage() {
       {compute.error && <div className="mb-3"><Alert tone="critical">{errorMessage(compute.error)}</Alert></div>}
       {compute.isSuccess && <div className="mb-3"><Alert tone="ok">Recomputation queued. Results update when the background job completes.</Alert></div>}
       <DataTable<Obj>
+        urlState
         path="/attack-paths"
         refetchInterval={10_000}
         filters={[

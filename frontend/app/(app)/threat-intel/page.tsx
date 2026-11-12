@@ -54,7 +54,7 @@ export default function ThreatIntelPage() {
       )}
       {tab === "items" && (
         <DataTable<Obj>
-          path="/intel/items" searchable searchPlaceholder="Search identifier or title"
+          path="/intel/items" urlState searchable searchPlaceholder="Search identifier or title"
           filters={[{ key: "source", label: "Source", options: ["cisa_kev", "mitre_attack", "mitre_atlas"] }, { key: "kind", label: "Kind", options: ["exploited_vulnerability", "technique", "tactic", "mitigation", "case_study"] }]}
           empty={{ title: "Catalogue is empty", body: "Synchronise a source to populate it." }}
           columns={[

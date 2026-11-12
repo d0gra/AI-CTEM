@@ -6,17 +6,14 @@ from sqlalchemy import and_, func, or_, select, text
 from app.api.deps import Db, Principal, require
 from app.db.base import utcnow
 from app.models import (
-    AIAgent,
     AIAsset,
     AIFinding,
     AIIntegration,
-    AIModel,
     Assessment,
     AssessmentRun,
     Asset,
     AttackPath,
     Finding,
-    MCPServer,
     Policy,
     PolicyEvaluation,
     RemediationTask,
@@ -154,8 +151,10 @@ def ai_overview(db: Db, _: Principal = require("ai:read")) -> dict:
                    "public_endpoints": public_endpoints,
                    "without_owner": _count(db, ACTIVE, Asset.type.in_(AI_ASSET_TYPES), Asset.owner_user_id.is_(None),
                                            Asset.owner_team_id.is_(None), model=Asset),
-                   "agents": _count(db, model=AIAgent), "mcp_servers": _count(db, model=MCPServer),
-                   "models": _count(db, model=AIModel), "integrations_detected": _count(db, model=AIIntegration)},
+                   "agents": _count(db, ACTIVE, Asset.type == "ai_agent", model=Asset),
+                   "mcp_servers": _count(db, ACTIVE, Asset.type == "mcp_server", model=Asset),
+                   "models": _count(db, ACTIVE, Asset.type == "ai_model", model=Asset),
+                   "integrations_detected": _count(db, model=AIIntegration)},
         "by_approval_status": dict(db.execute(
             select(AIAsset.approval_status, func.count()).join(Asset, Asset.id == AIAsset.asset_id).where(ACTIVE)
             .group_by(AIAsset.approval_status)).all()),

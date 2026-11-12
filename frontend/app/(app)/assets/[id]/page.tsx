@@ -1,14 +1,50 @@
 "use client";
 
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { Graph } from "@/components/graph";
-import { Alert, Badge, Button, Card, Dialog, EmptyState, ErrorState, Field, JsonBlock, KeyValue, PageHeader, Select, Skeleton, StatusBadge, Tabs } from "@/components/ui";
+import { Alert, Badge, Button, Card, Dialog, EmptyState, ErrorState, Field, KeyValue, PageHeader, Select, Skeleton, StatusBadge, Tabs } from "@/components/ui";
 import { FindingsTable } from "@/features/findings-table";
 import { errorMessage } from "@/lib/api";
 import { formatDate, titleCase } from "@/lib/format";
 import { can, useAction, useGet, useMe } from "@/lib/hooks";
 import type { Obj } from "@/types/api";
+
+const AI_TYPES = ["ai_application", "llm_endpoint", "ai_agent", "mcp_server", "mcp_client", "ai_model", "vector_database", "rag_application", "ai_framework", "ai_provider", "model_registry"];
+const RAG_KEYS = ["document_level_authorization", "ingests_untrusted_content", "ingestion_provenance_tracked", "contains_sensitive_data"];
+const HIDDEN = new Set(["asset_id", "id", "organization_id", "created_at", "updated_at"]);
+
+function show(value: unknown): ReactNode {
+  if (value === null || value === undefined || value === "") return <span className="text-muted">Not recorded</span>;
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) {
+    if (!value.length) return <span className="text-muted">None</span>;
+    return value.map((v) => (typeof v === "object" && v ? (v as Obj).name ?? JSON.stringify(v) : String(v))).join(", ");
+  }
+  if (typeof value === "object") return <span className="font-mono text-xs">{JSON.stringify(value)}</span>;
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) return formatDate(value, true);
+  const text = String(value);
+  return /^[a-z]+(_[a-z]+)+$/.test(text) ? titleCase(text) : text;
+}
+
+function AIPosture({ asset }: { asset: Obj }) {
+  const sections: [string, Obj | null][] = [["Governance and controls", asset.ai], ["Agent", asset.agent], ["MCP server", asset.mcp], ["Model", asset.model]];
+  const rag = ["rag_application", "vector_database"].includes(asset.type)
+    ? Object.fromEntries(RAG_KEYS.map((k) => [k, asset.attributes?.[k] ?? null])) : null;
+  return (
+    <Card title="AI posture" action={<Link href={`/ai-security?asset=${asset.id}`} className="text-xs text-accent hover:underline">Record posture</Link>}>
+      <div className="space-y-4">
+        {[...sections, ["Retrieval", rag] as [string, Obj | null]].filter(([, v]) => v).map(([title, values]) => (
+          <div key={title}>
+            <h3 className="mb-1.5 text-xs font-semibold text-muted">{title}</h3>
+            <KeyValue items={Object.entries(values as Obj).filter(([k]) => !HIDDEN.has(k)).map(([k, v]) => [titleCase(k), show(v)])} />
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
 
 export default function AssetDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -38,14 +74,14 @@ export default function AssetDetailPage() {
     const [source, dest] = form.direction === "out" ? [id, form.other] : [form.other, id];
     link.mutate({ source_asset_id: source, target_asset_id: dest, type: form.type, note: form.note }, { onSuccess: () => setLinking(false) });
   };
-  const special = a.agent ?? a.mcp ?? a.model ?? a.ai;
+  const special = AI_TYPES.includes(a.type) || !!(a.agent ?? a.mcp ?? a.model ?? a.ai);
 
   return (
     <>
       <PageHeader
         title={a.name}
         description={<span className="font-mono text-xs">{a.identifier}</span>}
-        actions={<><Badge>{titleCase(a.type)}</Badge><StatusBadge value={a.exposure} /><Badge tone={a.risk_score >= 75 ? "critical" : a.risk_score >= 50 ? "high" : "info"}>Risk {a.risk_score.toFixed(0)}</Badge></>}
+        actions={<>{special && <Link href={`/ai-security?asset=${a.id}`} className="text-xs text-accent hover:underline">AI posture</Link>}<Badge>{titleCase(a.type)}</Badge><StatusBadge value={a.exposure} /><Badge tone={a.risk_score >= 75 ? "critical" : a.risk_score >= 50 ? "high" : "info"}>Risk {a.risk_score.toFixed(0)}</Badge></>}
       />
       {patch.error && <div className="mb-3"><Alert tone="critical">{errorMessage(patch.error)}</Alert></div>}
       <div className="grid gap-4 lg:grid-cols-3">
@@ -122,8 +158,11 @@ export default function AssetDetailPage() {
         )}
         {tab === "attributes" && (
           <div className="grid gap-4 lg:grid-cols-2">
-            <Card title="Discovered attributes"><JsonBlock value={a.attributes} /></Card>
-            {special && <Card title="AI posture"><JsonBlock value={{ ai: a.ai, agent: a.agent, mcp: a.mcp, model: a.model }} /></Card>}
+            <Card title="Discovered attributes">
+              {Object.keys(a.attributes ?? {}).length === 0 ? <EmptyState title="No attributes recorded" /> :
+                <KeyValue items={Object.entries(a.attributes as Obj).map(([k, v]) => [titleCase(k), show(v)])} />}
+            </Card>
+            {special && <AIPosture asset={a} />}
           </div>
         )}
       </div>

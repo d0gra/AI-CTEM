@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db.base import utcnow
 from app.db.session import org_of
-from app.models import AIAsset, Asset, AssetDiscoveryEvent, AssetRelationship
+from app.models import AIAgent, AIAsset, AIModel, Asset, AssetDiscoveryEvent, AssetRelationship
 from app.models.asset import AI_ASSET_TYPES, ASSET_TYPES, RELATIONSHIP_TYPES
 
 _CASE_INSENSITIVE = {"domain", "subdomain", "website", "dns_record", "ip_address", "certificate"}
@@ -107,8 +107,12 @@ def upsert_asset(
     if spec.ai is not None or spec.type in AI_ASSET_TYPES:
         ai_row = db.get(AIAsset, asset.id)
         if ai_row is None:
-            ai_row = AIAsset(organization_id=org_id, asset_id=asset.id)
+            ai_row = AIAsset(organization_id=org_id, asset_id=asset.id, managed=source == "manual")
             db.add(ai_row)
+        if spec.type == "ai_agent" and db.get(AIAgent, asset.id) is None:
+            db.add(AIAgent(organization_id=org_id, asset_id=asset.id))
+        if spec.type == "ai_model" and db.get(AIModel, asset.id) is None:
+            db.add(AIModel(organization_id=org_id, asset_id=asset.id, model_name=asset.name))
         for key, value in (spec.ai or {}).items():
             if value is not None and getattr(ai_row, key) in (None, "unknown", False) and getattr(ai_row, key) != value:
                 setattr(ai_row, key, value)

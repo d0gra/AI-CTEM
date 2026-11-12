@@ -92,6 +92,9 @@ def list_integrations(db: Db, _: Principal = require("integrations:read")) -> li
 @router.post("", status_code=201)
 def create_integration(body: IntegrationIn, db: Db, principal: Principal = require("integrations:manage")) -> dict:
     spec = _spec(body.connector)
+    from app.domains.demo import guard_credentials
+
+    guard_credentials(bool(body.credentials))
     config, credentials = _validate(spec, body.config, body.credentials)
     if db.execute(select(Integration.id).where(Integration.name == body.name)).first():
         raise Conflict("An integration with this name already exists")
@@ -110,6 +113,9 @@ def create_integration(body: IntegrationIn, db: Db, principal: Principal = requi
 def update_integration(integration_id: uuid.UUID, body: IntegrationPatch, db: Db,
                        principal: Principal = require("integrations:manage")) -> dict:
     integration = _get(db, integration_id)
+    from app.domains.demo import guard_credentials
+
+    guard_credentials(bool(body.credentials))
     spec = _spec(integration.connector)
     if body.name:
         integration.name = body.name

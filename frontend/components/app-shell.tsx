@@ -186,6 +186,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </header>
         <main id="main" className="min-w-0 flex-1 p-4 lg:p-6">
+          {me.demo_mode && (
+            <div className="mb-4 rounded-md border border-low/40 bg-low/10 px-3 py-2 text-xs text-low" role="status">
+              Public demo, signed in as {me.full_name} ({me.role.replace(/_/g, " ")}). Everyone shares this data and it resets when the demo restarts.
+              Active testing is disabled; dry runs show what an engine would do.
+            </div>
+          )}
           {!me.email_verified && (me.email_verification_required || me.email_delivery_configured) && (
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-medium/40 bg-medium/10 px-3 py-2 text-xs text-medium" role="status">
               <span>{me.email_verification_required ? "Verify your email address to use the platform." : "Your email address is not verified."} Check your inbox for the link.</span>

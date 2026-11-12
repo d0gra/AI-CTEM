@@ -160,6 +160,10 @@ def ingest(db: Session, item: FindingInput, *, run_id: uuid.UUID | None = None) 
     else:
         finding.last_seen_at = now
         finding.assessment_run_id = run_id or finding.assessment_run_id
+        # The newest observation's wording wins (rule texts and scanner descriptions improve over time).
+        finding.title = redact(item.title)[:512] if item.title else finding.title
+        finding.description = redact(item.description) if item.description else finding.description
+        finding.remediation = item.remediation or finding.remediation
         if finding.severity != item.severity:
             add_event(db, finding, "severity_changed", {"from": finding.severity, "to": item.severity})
             finding.severity = item.severity
@@ -196,12 +200,13 @@ def ingest(db: Session, item: FindingInput, *, run_id: uuid.UUID | None = None) 
 
 
 def reconcile_unobserved(db: Session, *, source: str, asset_ids: set[uuid.UUID], observed: set[uuid.UUID],
-                         run_id: uuid.UUID | None, rule_prefix: str | None = None) -> dict:
+                         run_id: uuid.UUID | None, rule_prefix: str | None = None, absence_resolves: bool = False) -> dict:
     """After a complete run of `source` over `asset_ids`, handle findings that were not seen.
 
     A finding awaiting validation that is no longer observed is marked remediated (the retest
     verified the fix). Other open findings are only annotated: absence from one scan is not
-    treated as proof of remediation.
+    treated as proof of remediation, unless `absence_resolves` says the source re-evaluates
+    complete recorded data (then a rule that no longer applies is resolved).
     """
     if not asset_ids:
         return {"verified_remediated": 0, "not_observed": 0}
@@ -214,7 +219,14 @@ def reconcile_unobserved(db: Session, *, source: str, asset_ids: set[uuid.UUID],
     for finding in db.execute(stmt).scalars():
         if finding.id in observed:
             continue
-        if finding.status == "pending_validation":
+        if absence_resolves:
+            previous = finding.status
+            finding.status, finding.resolved_at = "remediated", now
+            add_event(db, finding, "status_changed", {"from": previous, "to": "remediated", "run_id": str(run_id) if run_id else None,
+                                                      "reason": "The recorded configuration no longer meets this rule's conditions"})
+            sync_tasks(db, finding)
+            verified += 1
+        elif finding.status == "pending_validation":
             finding.status, finding.resolved_at = "remediated", now
             add_event(db, finding, "retest", {"result": "not_present", "run_id": str(run_id) if run_id else None})
             add_event(db, finding, "status_changed", {"from": "pending_validation", "to": "remediated",

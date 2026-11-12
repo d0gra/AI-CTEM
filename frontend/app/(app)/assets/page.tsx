@@ -1,6 +1,7 @@
 "use client";
 
 import { Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { DataTable } from "@/components/data-table";
 import { Alert, Badge, Button, Dialog, Field, Input, PageHeader, Select, StatusBadge } from "@/components/ui";
@@ -9,16 +10,26 @@ import { relativeTime, titleCase } from "@/lib/format";
 import { can, useAction, useGet, useMe } from "@/lib/hooks";
 import type { Asset, Obj } from "@/types/api";
 
+const AI_TYPES = ["ai_application", "llm_endpoint", "ai_agent", "mcp_server", "mcp_client", "ai_model", "vector_database", "rag_application", "ai_framework", "ai_provider", "model_registry"];
+
 export default function AssetsPage() {
   const { data: me } = useMe();
   const { data: facets } = useGet<Obj>("/assets/facets");
   const [open, setOpen] = useState(false);
-  const create = useAction<Obj>("POST", "/assets");
+  const create = useAction<Obj, Asset>("POST", "/assets");
+  const router = useRouter();
+  const [type, setType] = useState("");
+  const isAI = AI_TYPES.includes(type);
   const types: string[] = Object.keys(facets?.type ?? {}).sort();
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = Object.fromEntries(new FormData(e.currentTarget)) as Obj;
-    create.mutate(form, { onSuccess: () => setOpen(false) });
+    create.mutate(form, {
+      onSuccess: (asset) => {
+        setOpen(false);
+        if (AI_TYPES.includes(asset.type)) router.push(`/ai-security?asset=${asset.id}`);
+      },
+    });
   };
   return (
     <>
@@ -29,6 +40,7 @@ export default function AssetsPage() {
       />
       <DataTable<Asset>
         path="/assets"
+        urlState
         searchable
         searchPlaceholder="Search name or identifier"
         defaultSort={{ key: "risk_score", order: "desc" }}
@@ -55,7 +67,8 @@ export default function AssetsPage() {
       <Dialog open={open} onClose={() => setOpen(false)} title="Add asset">
         <form onSubmit={submit} className="space-y-3">
           {create.error && <Alert tone="critical">{errorMessage(create.error)}</Alert>}
-          <Field label="Type"><Select name="type" required>{(facets?.asset_types ?? []).map((t: string) => <option key={t} value={t}>{titleCase(t)}</option>)}</Select></Field>
+          <Field label="Type"><Select name="type" required value={type || facets?.asset_types?.[0] || ""} onChange={(e) => setType(e.target.value)}>{(facets?.asset_types ?? []).map((t: string) => <option key={t} value={t}>{titleCase(t)}</option>)}</Select></Field>
+          {isAI && <Alert>AI assets appear under AI Security. After adding it you record its security configuration there; the posture review runs automatically.</Alert>}
           <Field label="Identifier" hint="Canonical identifier, e.g. FQDN, URL, ARN or connection string without credentials."><Input name="identifier" required /></Field>
           <Field label="Name"><Input name="name" required /></Field>
           <div className="grid grid-cols-2 gap-3">
@@ -64,7 +77,7 @@ export default function AssetsPage() {
             <Field label="Environment"><Select name="environment" defaultValue="unknown">{["unknown", "production", "staging", "development", "test"].map((v) => <option key={v}>{v}</option>)}</Select></Field>
             <Field label="Data sensitivity"><Select name="data_sensitivity" defaultValue="unknown">{["unknown", "public", "internal", "confidential", "restricted"].map((v) => <option key={v}>{v}</option>)}</Select></Field>
           </div>
-          <div className="flex justify-end gap-2"><Button type="button" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" variant="primary" loading={create.isPending}>Add</Button></div>
+          <div className="flex justify-end gap-2"><Button type="button" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" variant="primary" loading={create.isPending}>{isAI ? "Add and record posture" : "Add"}</Button></div>
         </form>
       </Dialog>
     </>

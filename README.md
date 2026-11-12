@@ -137,6 +137,10 @@ Run the API and worker with `CTEM_ALLOW_PRIVATE_TARGETS=true`, then in **Adminis
 CTEM_EMAIL=you@example.com CTEM_PASSWORD='...' python3 scripts/lab_walkthrough.py
 ```
 
+## Public demo
+
+`Dockerfile.demo` builds one container (PostgreSQL, API, worker and web) for showing the platform on a single-service host such as Render, with one sign-in per role listed on the login page. `render.yaml` deploys it as a Render Blueprint. Demo mode disables active testing and stored credentials, and data resets on every restart. See [docs/demo.md](docs/demo.md).
+
 ## Docker deployment
 
 ```bash
@@ -231,8 +235,8 @@ The **Integrations** page lists every integration with how it is used: *connect*
 | Integration | How it is used | Verified against |
 | --- | --- | --- |
 | Nmap, Nuclei | Tool | Real binaries scanning local listeners |
-| Trivy, Grype, Semgrep, Gitleaks, Checkov | Tool, or report upload | Real binaries (Trivy 0.76, Grype 0.121, Semgrep 1.185, Gitleaks 8.30, Checkov 3.4) scanning a sample repository |
-| OWASP ZAP, Prowler (AWS, Azure, Google Cloud, Kubernetes), SARIF, CycloneDX/SPDX SBOM | Report upload | Representative report files |
+| Trivy, Grype, Semgrep, Gitleaks, Checkov | Tool, report upload, or CI/CD pipeline | Real binaries (Trivy 0.76, Grype 0.121, Semgrep 1.185, Gitleaks 8.30, Checkov 3.4) scanning a sample repository |
+| OWASP ZAP, Prowler (AWS, Azure, Google Cloud, Kubernetes), SARIF, CycloneDX/SPDX SBOM | Report upload or CI/CD pipeline | Representative report files |
 | CISA KEV, FIRST EPSS, NIST NVD, MITRE ATT&CK, MITRE ATLAS | Feed | The live public sources (1,779 KEV entries, 765 ATT&CK and 278 ATLAS objects, CVSS 3.1 and 4.0 from NVD) |
 | OSV | Queried during dependency and SBOM analysis | The live OSV API |
 | DNS and certificate transparency | Built-in discovery | Live public DNS and crt.sh |
@@ -244,6 +248,8 @@ The **Integrations** page lists every integration with how it is used: *connect*
 | Model endpoints for the AI red team: OpenAI-compatible, Claude, Gemini, custom HTTP | Connect | Recorded API stand-ins and the local lab model |
 
 Not available: GitHub/GitLab as repository sources (repositories are analysed from a path on the workers), native Azure and Google Cloud connectors (use Prowler upload), ScoutSuite, live Kubernetes inventory.
+
+**CI/CD pipelines.** Pipelines send scanner reports to `POST /api/v1/ci/ingest` with an upload-only token created under **Integrations → CI/CD pipelines**, which also generates the job for GitHub Actions, GitLab CI, Jenkins or a shell. The response reports new and seen findings and an optional severity gate that can fail the build. See [CI/CD ingestion](docs/integrations.md#cicd-ingestion).
 
 Details and required permissions: [docs/integrations.md](docs/integrations.md).
 
@@ -266,7 +272,8 @@ Usage is billed to a Claude Console organization. **Claude Pro, Max and Team pla
 - **Shadow AI.** Providers not on the organization's approved list produce findings. With no list configured, usage is reported as *unknown*, not *unapproved*. Visibility is limited to analysed sources and stated as such in the UI.
 - **MCP.** Static review of server definitions (plaintext transport, literal secrets, unpinned packages, broad filesystem roots, privileged launch, auto-approved tools) and a live probe that performs `initialize`, `tools/list`, `resources/list`, `prompts/list` only. `tools/call` is never sent; a hard guard enforces this.
 - **Models.** Pickle streams are disassembled without execution; references to code-execution callables are reported with opcode evidence and wording that does not claim malice.
-- **Posture.** Rules over declared agent tools, autonomy, memory, identity, RAG authorization and tenant isolation, mapped to OWASP LLM Top 10 (2025), MITRE ATLAS and NIST AI RMF.
+- **Posture.** Rules over declared agent tools, autonomy, memory, identity, RAG authorization and tenant isolation, mapped to OWASP LLM Top 10 (2025), MITRE ATLAS and NIST AI RMF. The review runs automatically, debounced, whenever an AI asset is added or its posture changes, after any assessment that touches AI assets, and daily. An internet-exposed or production AI asset whose key controls are not recorded gets an `ai.posture.unrecorded` finding, so an asset is never reported clean for lack of data. Because the review re-evaluates the complete recorded configuration, a finding whose rule no longer applies is marked remediated with the reason recorded; scanner findings that are merely not observed again stay open.
+- **Inventory.** AI assets are added on **AI Security → Add AI asset** (or as any asset of an AI type) and their configuration, including agent tools and capabilities, is recorded in the posture form.
 - **Red team.** Marker- and canary-based tests; a test is *vulnerable* only when the planted value or forbidden tool call appears in the response. Tools the target requests are recorded, never executed.
 
 See [docs/ai-security.md](docs/ai-security.md).

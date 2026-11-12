@@ -29,7 +29,42 @@ Common behaviour (`HttpApi`): SSRF-guarded transport, bounded retries with backo
 | Any SARIF 2.1.0 producer | — | SARIF | — |
 | SBOM | — | CycloneDX JSON, SPDX JSON (components checked against OSV) | — |
 
-Import: `POST /api/v1/scanner-imports` (multipart: `format`, `file`, optional `target`) or **Import results** in the UI. A file in the wrong format fails the import with a specific message rather than importing nothing. Secret values in Gitleaks reports are dropped at parse time.
+A file in the wrong format fails the import with a specific message rather than importing nothing. Secret values in Gitleaks reports are dropped at parse time. Reports reach the platform two ways:
+
+- **From a pipeline** (recommended): see [CI/CD ingestion](#cicd-ingestion).
+- **By hand**: **Upload results** on the Integrations catalogue or a module page, or `POST /api/v1/scanner-imports` (multipart: `format`, `file`, optional `target`) with a signed-in session.
+
+Both appear in the upload history (`GET /api/v1/imports?source=all|ci|manual&format=…`, **Integrations → Uploaded results**, and on each module page for its formats).
+
+### CI/CD ingestion
+
+1. **Integrations → CI/CD pipelines → New token** (requires `integrations:manage`). The token (`ctem_ci_…`) is shown once and stored as a SHA-256 hash. It has a single scope, `ingest`: it can upload reports and read back the result of its own organization's uploads, and cannot sign in or call any other endpoint. Tokens expire after 30 days to 2 years, or never; the list shows the last use time and source address, and revoking takes effect immediately.
+2. Store it as a CI secret named `CTEM_CI_TOKEN`.
+3. After the scanner step, send the report:
+
+```bash
+curl --fail-with-body -sS -X POST "$CTEM_URL/api/v1/ci/ingest" \
+  -H "Authorization: Bearer $CTEM_CI_TOKEN" \
+  --url-query "format=trivy" --url-query "provider=github_actions" \
+  --url-query "repository=$GITHUB_REPOSITORY" --url-query "branch=$GITHUB_REF_NAME" --url-query "commit=$GITHUB_SHA" \
+  --url-query "fail_on=high" --url-query "exit_code=true" \
+  --data-binary @trivy.json
+```
+
+The page generates the full job for GitHub Actions, GitLab CI, Jenkins or a plain shell, for each supported format. `--url-query` needs curl 7.87 or later.
+
+| Parameter | Meaning |
+| --- | --- |
+| `format` (required) | One of the import formats in the table above |
+| `target` | What was scanned, when the report does not say (Semgrep, Gitleaks, SARIF) |
+| `repository`, `branch`, `commit`, `pipeline_url`, `provider` | Recorded with the upload and on the assets it touched (`last_ci_build`) |
+| `fail_on` | `none` (default), `low`, `medium`, `high` or `critical` |
+| `exit_code` | `true` returns 412 when the gate fails and 422 when the report cannot be parsed, so `curl --fail-with-body` fails the build |
+| `wait`, `wait_seconds` | By default the request processes the report before responding (up to 120 s, max 600). With `wait=false`, or when processing takes longer, the response is 202 and `GET /api/v1/ci/uploads/{id}` returns the outcome |
+
+The body is the raw report, or a multipart form with a `file` field; the size limit is `CTEM_MAX_UPLOAD_BYTES`. The JSON response contains the status, new and seen finding counts, and the gate: `passed`, `blocking_count`, up to 20 blocking findings, and open findings by severity.
+
+**Gate semantics.** The gate counts open findings that this upload observed at or above the threshold, including findings first seen in earlier builds, so an unfixed issue keeps failing the build until it is fixed or a risk acceptance or false-positive decision is recorded for it. Findings in those states are reported as `suppressed` and do not block.
 
 ## Cloud
 

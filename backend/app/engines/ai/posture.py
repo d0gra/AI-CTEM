@@ -42,6 +42,25 @@ def run(ctx: EngineContext) -> None:
                 remediation=remediation, technical_impact=impact, owasp_llm=owasp, atlas_technique=atlas, nist_ai_rmf=nist,
                 evidence=[EvidenceInput("config", f"Inventory attributes of {_asset.name}", basis)]))
 
+        # Unknown configuration on an exposed or production AI asset is itself a gap: the rules below
+        # cannot judge what was never recorded or probed.
+        agent_row = agents.get(asset.id)
+        needed: list[str] = []
+        if asset.type in ("rag_application", "vector_database"):
+            needed += [k for k in ("document_level_authorization", "ingests_untrusted_content") if attrs.get(k) is None]
+            if x is None or x.tenant_isolation is None:
+                needed.append("tenant_isolation")
+        if asset.type in ("llm_endpoint", "ai_application", "rag_application", "vector_database", "mcp_server") and (x is None or x.auth_required is None):
+            needed.append("auth_required")
+        if asset.type == "ai_agent" and agent_row is not None and (not agent_row.tools or agent_row.human_approval_required is None):
+            needed += [k for k, missing in (("tools", not agent_row.tools), ("human_approval_required", agent_row.human_approval_required is None)) if missing]
+        if needed and (asset.exposure == "internet" or asset.environment == "production"):
+            emit("ai.posture.unrecorded", "ai_infra" if asset.type in ("llm_endpoint", "mcp_server") else ("ai_rag" if asset.type in ("rag_application", "vector_database") else "ai_agent" if asset.type == "ai_agent" else "ai_llm"),
+                 "medium" if asset.exposure == "internet" else "low", f"AI security posture not recorded: {asset.name}",
+                 f"This {'internet-exposed' if asset.exposure == 'internet' else 'production'} AI asset has no recorded value for: "
+                 + ", ".join(n.replace("_", " ") for n in needed) + ". The posture rules cannot evaluate controls that are unknown.",
+                 "Record the configuration under AI Security → Posture, or run the MCP or inference endpoint probe to observe it.",
+                 {"missing": needed, "exposure": asset.exposure, "environment": asset.environment}, nist="MAP 1.1")
         if not (asset.owner_user_id or asset.owner_team_id) and asset.type not in ("ai_framework", "ai_provider", "model_registry"):
             emit("ai.governance.no_owner", "shadow_ai", "low", f"AI asset has no assigned owner: {asset.name}",
                  "No user or team is accountable for this AI asset.", "Assign an owning team.", {"owner": None, "type": asset.type},
@@ -123,9 +142,14 @@ def run(ctx: EngineContext) -> None:
                      "Classify the store and apply the matching access and retention controls.",
                      {"contains_sensitive_data": True, "data_sensitivity": asset.data_sensitivity}, owasp="LLM02:2025")
             if asset.exposure == "internet" and x is not None and x.auth_required is False:
-                emit("ai.rag.vector_db_exposed", "ai_rag", "critical", f"Vector database is internet-exposed without authentication: {asset.name}",
-                     "Embeddings and the source text stored with them can be read or overwritten by anyone.",
-                     "Remove public exposure and enable authentication.", {"exposure": "internet", "auth_required": False}, owasp="LLM08:2025")
+                store = asset.type == "vector_database"
+                emit("ai.rag.vector_db_exposed", "ai_rag", "critical",
+                     f"{'Vector database' if store else 'RAG application'} is internet-exposed without authentication: {asset.name}",
+                     "Embeddings and the source text stored with them can be read or overwritten by anyone." if store else
+                     "Anyone on the internet can query it and receive passages from the documents it retrieves.",
+                     "Remove public exposure and enable authentication." if store else
+                     "Require authentication, and authorise retrieval per user so answers only draw on documents the caller may read.",
+                     {"exposure": "internet", "auth_required": False}, owasp="LLM08:2025")
         if asset.type in ("llm_endpoint", "ai_application") and x is not None:
             if x.auth_required is False:
                 emit("ai.endpoint.no_auth_declared", "ai_infra", "critical" if asset.exposure == "internet" else "high",
@@ -153,7 +177,7 @@ def run(ctx: EngineContext) -> None:
 
 
 register(EngineSpec(
-    kind="ai_posture_review", name="AI posture review", module="ai_security", run=run,
+    kind="ai_posture_review", name="AI posture review", module="ai_security", run=run, absence_resolves=True,
     description="Evaluates inventoried AI agents, RAG systems, endpoints, MCP servers and models against least-privilege, "
                 "oversight, isolation and provenance rules mapped to OWASP LLM Top 10, MITRE ATLAS and NIST AI RMF.",
 ))

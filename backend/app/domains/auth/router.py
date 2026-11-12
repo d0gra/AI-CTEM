@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.core.errors import NotFound
 from app.db.base import utcnow
 from app.domains.auth import service
+from app.domains.demo import guard_account
 from app.models import UserSession
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -32,6 +33,7 @@ class UserOut(BaseModel):
     email_verified: bool = False
     email_verification_required: bool = False
     email_delivery_configured: bool = False
+    demo_mode: bool = False
     id: uuid.UUID
     organization_id: uuid.UUID
     email: str
@@ -138,7 +140,7 @@ def me(principal: Principal = Depends(get_principal)) -> UserOut:
         verified = bool(user and user.email_verified_at)
     return UserOut(
         email_verified=verified, email_verification_required=get_settings().require_email_verification,
-        email_delivery_configured=bool(get_settings().smtp_host),
+        email_delivery_configured=bool(get_settings().smtp_host), demo_mode=get_settings().demo_mode,
         id=principal.user_id, organization_id=principal.organization_id, email=principal.email,
         full_name=principal.full_name, role=principal.role_key, permissions=sorted(principal.permissions),
         mfa_enabled=principal.mfa_enabled, mfa_verified=principal.mfa_verified,
@@ -177,24 +179,28 @@ def revoke_session(session_id: uuid.UUID, db: Db, principal: CurrentUser) -> Non
 
 @router.post("/mfa/setup")
 def mfa_setup(db: Db, principal: CurrentUser) -> dict:
+    guard_account(principal.email, "set up MFA on it")
     secret, uri = service.begin_mfa_setup(db, principal.user_id)
     return {"secret": secret, "otpauth_uri": uri}
 
 
 @router.post("/mfa/enable", status_code=204)
 def mfa_enable(body: CodeIn, db: Db, principal: CurrentUser) -> None:
+    guard_account(principal.email, "set up MFA on it")
     service.enable_mfa(db, principal.user_id, principal.session_id, body.code)
     audit_event(db, principal, "auth.mfa_enabled")
 
 
 @router.post("/mfa/disable", status_code=204)
 def mfa_disable(body: MfaDisableIn, db: Db, principal: CurrentUser) -> None:
+    guard_account(principal.email, "change its MFA")
     service.disable_mfa(db, principal.user_id, body.password, body.code)
     audit_event(db, principal, "auth.mfa_disabled")
 
 
 @router.post("/password/change", status_code=204)
 def password_change(body: PasswordChangeIn, db: Db, principal: CurrentUser) -> None:
+    guard_account(principal.email, "change its password")
     service.change_password(db, principal.user_id, principal.session_id, body.current_password, body.new_password)
     audit_event(db, principal, "auth.password_changed")
 

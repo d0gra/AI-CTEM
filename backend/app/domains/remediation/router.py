@@ -88,9 +88,11 @@ def _check_people(db: Db, user_id: uuid.UUID | None, team_id: uuid.UUID | None) 
 
 
 @router.get("/tasks")
-def list_tasks(db: Db, paging: Paging, _: Principal = require("remediation:read"), status: str | None = None,
+def list_tasks(db: Db, paging: Paging, principal: Principal = require("remediation:read"), status: str | None = None,
                assignee_user_id: uuid.UUID | None = None, team_id: uuid.UUID | None = None, overdue: bool = False,
-               finding_id: uuid.UUID | None = None) -> dict:
+               finding_id: uuid.UUID | None = None, mine: bool = False) -> dict:
+    if mine:
+        assignee_user_id = principal.user_id
     stmt = (select(RemediationTask, Finding).join(Finding, Finding.id == RemediationTask.finding_id)
             .order_by(RemediationTask.due_at.asc().nulls_last(), RemediationTask.created_at.desc()))
     for column, value in ((RemediationTask.status, status), (RemediationTask.assignee_user_id, assignee_user_id),

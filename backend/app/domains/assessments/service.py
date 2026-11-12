@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import Principal
+from app.core.config import get_settings
 from app.core.errors import Conflict, ValidationFailed
 from app.db.base import utcnow
 from app.domains.assets import scope as scope_service
@@ -46,6 +47,9 @@ class EngineSpec:
     requires_connector: str | None = None  # integration connector key
     version_args: tuple[str, ...] = ("--version",)
     permission: str = "assessments:run"  # needed to create and run assessments of this kind
+    # True when the engine evaluates complete recorded data rather than probing a target: a finding
+    # it no longer produces is resolved, not merely unobserved (scanners can miss things; rules cannot).
+    absence_resolves: bool = False
 
 
 ENGINES: dict[str, EngineSpec] = {}
@@ -123,7 +127,10 @@ class EngineContext:
         return self.spec.kind
 
     def scope(self, target: str, *, active: bool | None = None) -> scope_service.ScopeDecision:
-        return scope_service.check_scope(self.db, target, active=self.spec.active if active is None else active)
+        active = self.spec.active if active is None else active
+        if self.dry_run and get_settings().demo_mode:
+            active = False  # a dry run sends nothing; on the demo it still needs scope coverage
+        return scope_service.check_scope(self.db, target, active=active)
 
     def planned(self, action: str) -> None:
         self.plan.append(action)
@@ -180,7 +187,9 @@ def validate_definition(db: Session, kind: str, config: dict, targets: list[dict
         if not value:
             raise ValidationFailed("Target value must not be empty")
         if kind_ != "asset":
-            scope_service.check_scope(db, value, active=spec.active)  # refuse out-of-scope definitions early
+            # Refuse out-of-scope definitions early. On the public demo active engines may still be defined
+            # (for dry runs); start_run refuses to run them for real.
+            scope_service.check_scope(db, value, active=spec.active and not get_settings().demo_mode)
         normalised.append({"kind": kind_, "value": value, "asset_id": target.get("asset_id")})
     if spec.requires_connector:
         integration = db.get(Integration, integration_id) if integration_id else None
@@ -195,6 +204,10 @@ def start_run(db: Session, assessment: Assessment, principal: Principal | None, 
               retest_of_finding_id: uuid.UUID | None = None) -> AssessmentRun:
     if assessment.kind not in ENGINES:
         raise ValidationFailed(f"Assessment kind {assessment.kind!r} is no longer available")
+    if not dry_run:
+        from app.domains.demo import guard_active
+
+        guard_active(ENGINES[assessment.kind].active)
     active = db.execute(
         select(AssessmentRun.id).where(AssessmentRun.assessment_id == assessment.id,
                                        AssessmentRun.status.in_(("queued", "running")))
@@ -245,7 +258,8 @@ def run_assessment_job(job: JobContext, db: Session) -> dict:
     reconciliation = {"verified_remediated": 0, "not_observed": 0}
     if not run.dry_run:
         reconciliation = findings.reconcile_unobserved(
-            db, source=spec.kind, asset_ids=ctx.complete_assets, observed=ctx.observed_findings, run_id=run.id)
+            db, source=spec.kind, asset_ids=ctx.complete_assets, observed=ctx.observed_findings, run_id=run.id,
+            absence_resolves=spec.absence_resolves)
         risk.refresh_asset_risk(db, ctx.touched_assets)
     if integration is not None and not run.dry_run:
         integration.last_sync_at, integration.health = utcnow(), "healthy"
@@ -255,6 +269,13 @@ def run_assessment_job(job: JobContext, db: Session) -> dict:
                    "tool_version": tool["version"]}
     if assessment.schedule_interval_minutes:
         assessment.next_run_at = utcnow() + timedelta(minutes=assessment.schedule_interval_minutes)
+    if not run.dry_run and spec.kind != "ai_posture_review" and ctx.touched_assets:
+        from app.models.asset import AI_ASSET_TYPES
+
+        if db.execute(select(Asset.id).where(Asset.id.in_(ctx.touched_assets), Asset.type.in_(AI_ASSET_TYPES)).limit(1)).first():
+            from app.domains.ai.posture import request_review
+
+            request_review(db, assessment.organization_id)
     if not run.dry_run and (ctx.stats["findings_created"] or ctx.stats["assets_created"]
                             or reconciliation["verified_remediated"]):
         enqueue(db, organization_id=assessment.organization_id, job_type="attack_paths.compute",

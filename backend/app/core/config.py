@@ -90,6 +90,12 @@ class Settings(BaseSettings):
     # instead of storing an API key. Leave off on shared multi-tenant deployments: usage is billed to the operator.
     allow_server_claude_credentials: bool = False
 
+    # Public demo: one shared account per role with a published password. Disables active testing and
+    # changes to the demo accounts so visitors cannot misuse the instance or lock each other out.
+    demo_mode: bool = False
+    demo_password: str = "Demo-CTEM-2026!"  # noqa: S105  (published on purpose; used only when demo_mode is on)
+    demo_sample_data: bool = True
+
     # Observability
     log_level: str = "INFO"
     log_json: bool = True

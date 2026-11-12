@@ -24,6 +24,7 @@ export default function VulnerabilitiesPage() {
       {tab === "catalogue" && (
         <DataTable<Obj>
           path="/intel/vulnerabilities"
+          urlState
           searchable
           searchPlaceholder="Search CVE or title"
           toggles={[{ key: "kev", label: "Known exploited only" }]}

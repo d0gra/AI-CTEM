@@ -339,6 +339,8 @@ class ImportConfig(BaseModel):
     sha256: str
     target: str | None = None
     filename: str = ""
+    fail_on: str = "none"
+    ci: dict | None = None
 
 
 def run_import(ctx: EngineContext) -> None:
@@ -364,6 +366,19 @@ def run_import(ctx: EngineContext) -> None:
             ingest_parsed(ctx, parsers.PARSERS[config.format](data, config.target), source)
     except parsers.ReportFormatError as exc:
         raise PermanentJobError(str(exc)) from exc
+    if config.ci:  # record which build last reported on each asset
+        from app.models import Asset as AssetModel
+
+        build = {k: config.ci.get(k) for k in ("provider", "repository", "branch", "commit", "pipeline_url") if config.ci.get(k)}
+        build["at"] = ctx.run.created_at.isoformat() if ctx.run.created_at else None
+        for asset_id in ctx.touched_assets:
+            asset = ctx.db.get(AssetModel, asset_id)
+            if asset is not None:
+                asset.attributes = {**(asset.attributes or {}), "last_ci_build": build}
+    ctx.db.flush()
+    from app.domains.ci.service import evaluate_gate
+
+    ctx.stats["gate"] = evaluate_gate(ctx.db, ctx.run.id, config.fail_on)
 
 
 register(EngineSpec(kind="scanner_import", name="Scanner result import", module="vulnerabilities", run=run_import,

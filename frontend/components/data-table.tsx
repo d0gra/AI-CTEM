@@ -2,9 +2,9 @@
 
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef, type SortingState } from "@tanstack/react-table";
 import clsx from "clsx";
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Search } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { errorMessage, type Params } from "@/lib/api";
 import { useGet } from "@/lib/hooks";
 import { titleCase } from "@/lib/format";
@@ -38,35 +38,82 @@ interface Props<T> {
   pageSize?: number;
   empty?: { title: string; body?: ReactNode };
   refetchInterval?: number;
+  /** Keep search, filters, sorting and page in the address bar so views can be bookmarked and linked to.
+   *  Use on the main table of a page only: two URL-bound tables on one page would share parameters. */
+  urlState?: boolean;
+  /** Extra URL parameters forwarded to the API and shown as removable chips (for example a deep link's source). */
+  passthrough?: { key: string; label: string }[];
+}
+
+type State = Record<string, string>;
+
+/** Table state held either in the address bar or in component state. */
+function useTableState(urlState: boolean, keys: string[]): [State, (changes: Record<string, string | null>) => void] {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [local, setLocal] = useState<State>({});
+  const fromUrl: State = {};
+  if (urlState) for (const key of keys) { const v = searchParams.get(key); if (v !== null && v !== "") fromUrl[key] = v; }
+  const update = (changes: Record<string, string | null>) => {
+    if (!urlState) {
+      setLocal((current) => {
+        const next = { ...current };
+        for (const [k, v] of Object.entries(changes)) { if (v === null || v === "") delete next[k]; else next[k] = v; }
+        return next;
+      });
+      return;
+    }
+    const next = new URLSearchParams(window.location.search);
+    for (const [k, v] of Object.entries(changes)) { if (v === null || v === "") next.delete(k); else next.set(k, v); }
+    const text = next.toString();
+    router.replace(text ? `${pathname}?${text}` : pathname, { scroll: false });
+  };
+  return [urlState ? fromUrl : local, update];
+}
+
+export function DataTable<T extends { id?: string }>(props: Props<T>) {
+  return (
+    <Suspense fallback={<div className="rounded-lg border border-border bg-surface p-4"><Skeleton className="h-24" /></div>}>
+      <Table {...props} />
+    </Suspense>
+  );
 }
 
 /** Server-driven table: pagination, sorting, search and filters are all sent to the API. */
-export function DataTable<T extends { id?: string }>({
+function Table<T extends { id?: string }>({
   path, columns, params, filters = [], toggles = [], searchable, searchPlaceholder, defaultSort, rowHref, pageSize = 25, empty, refetchInterval,
+  urlState = false, passthrough = [],
 }: Props<T>) {
   const router = useRouter();
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const [debounced, setDebounced] = useState("");
-  const [selected, setSelected] = useState<Record<string, string>>({});
-  const [flags, setFlags] = useState<Record<string, boolean>>({});
-  const [sorting, setSorting] = useState<SortingState>(defaultSort ? [{ id: defaultSort.key, desc: defaultSort.order === "desc" }] : []);
+  const keys = ["q", "page", "sort", "order", ...filters.map((f) => f.key), ...toggles.map((t) => t.key), ...passthrough.map((p) => p.key)];
+  const [state, update] = useTableState(urlState, keys);
+  const page = Math.max(1, Number(state.page) || 1);
+  const setPage = (next: number) => update({ page: next > 1 ? String(next) : null });
+  const [search, setSearch] = useState(state.q ?? "");
+  const sorting: SortingState = state.sort
+    ? [{ id: state.sort, desc: state.order !== "asc" }]
+    : defaultSort ? [{ id: defaultSort.key, desc: defaultSort.order === "desc" }] : [];
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      setDebounced(search.trim());
-      setPage(1);
+      if (search.trim() !== (state.q ?? "")) update({ q: search.trim() || null, page: null });
     }, 300);
     return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only the typed text should restart the debounce
   }, [search]);
 
+  const selected: Params = Object.fromEntries(filters.filter((f) => state[f.key]).map((f) => [f.key, state[f.key]]));
+  const flags: Params = Object.fromEntries(toggles.filter((t) => state[t.key] === "true").map((t) => [t.key, true]));
+  const extra: Params = Object.fromEntries(passthrough.filter((p) => state[p.key]).map((p) => [p.key, state[p.key]]));
   const query: Params = {
     ...params,
+    ...extra,
     ...selected,
     ...flags,
     page,
     page_size: pageSize,
-    q: debounced || undefined,
+    q: state.q || undefined,
     sort: sorting[0]?.id,
     order: sorting[0] ? (sorting[0].desc ? "desc" : "asc") : undefined,
   };
@@ -88,8 +135,8 @@ export function DataTable<T extends { id?: string }>({
     columns: defs,
     state: { sorting },
     onSortingChange: (updater) => {
-      setSorting(updater);
-      setPage(1);
+      const next = typeof updater === "function" ? updater(sorting) : updater;
+      update({ sort: next[0]?.id ?? null, order: next[0] ? (next[0].desc ? "desc" : "asc") : null, page: null });
     },
     manualSorting: true,
     manualPagination: true,
@@ -99,7 +146,8 @@ export function DataTable<T extends { id?: string }>({
 
   const total = data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / pageSize));
-  const hasControls = searchable || filters.length > 0 || toggles.length > 0;
+  const chips = passthrough.filter((p) => state[p.key]);
+  const hasControls = searchable || filters.length > 0 || toggles.length > 0 || chips.length > 0;
 
   return (
     <div className="rounded-lg border border-border bg-surface">
@@ -116,11 +164,8 @@ export function DataTable<T extends { id?: string }>({
               key={f.key}
               aria-label={f.label}
               className="w-auto min-w-32"
-              value={selected[f.key] ?? ""}
-              onChange={(e) => {
-                setSelected((s) => ({ ...s, [f.key]: e.target.value }));
-                setPage(1);
-              }}
+              value={state[f.key] ?? ""}
+              onChange={(e) => update({ [f.key]: e.target.value || null, page: null })}
             >
               <option value="">{f.label}: all</option>
               {f.options.map((o) => {
@@ -137,14 +182,17 @@ export function DataTable<T extends { id?: string }>({
             <label key={t.key} className="flex items-center gap-1.5 text-xs text-muted">
               <input
                 type="checkbox"
-                checked={!!flags[t.key]}
-                onChange={(e) => {
-                  setFlags((f) => ({ ...f, [t.key]: e.target.checked }));
-                  setPage(1);
-                }}
+                checked={state[t.key] === "true"}
+                onChange={(e) => update({ [t.key]: e.target.checked ? "true" : null, page: null })}
               />
               {t.label}
             </label>
+          ))}
+          {chips.map((p) => (
+            <span key={p.key} className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-2 px-2 py-1 text-xs">
+              {p.label}: <span className="font-mono">{state[p.key]}</span>
+              <button type="button" aria-label={`Clear ${p.label}`} onClick={() => update({ [p.key]: null, page: null })} className="rounded text-muted hover:text-text"><X className="h-3 w-3" /></button>
+            </span>
           ))}
         </div>
       )}
@@ -213,13 +261,13 @@ export function DataTable<T extends { id?: string }>({
             {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total}
           </span>
           <div className="flex items-center gap-1">
-            <Button size="sm" variant="ghost" aria-label="Previous page" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+            <Button size="sm" variant="ghost" aria-label="Previous page" disabled={page <= 1} onClick={() => setPage(page - 1)}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="tabular">
               Page {page} of {pages}
             </span>
-            <Button size="sm" variant="ghost" aria-label="Next page" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
+            <Button size="sm" variant="ghost" aria-label="Next page" disabled={page >= pages} onClick={() => setPage(page + 1)}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>

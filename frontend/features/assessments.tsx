@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Play, Plus, Upload } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Alert, Badge, Button, Card, Dialog, EmptyState, ErrorState, Field, Input, Select, Skeleton, StatusBadge, Textarea } from "@/components/ui";
@@ -7,6 +8,7 @@ import { api, errorMessage } from "@/lib/api";
 import { relativeTime, titleCase } from "@/lib/format";
 import { can, useAction, useGet, useMe } from "@/lib/hooks";
 import type { Obj } from "@/types/api";
+import { UploadHistory } from "@/features/ci";
 import { useQueryClient } from "@tanstack/react-query";
 
 /** Renders inputs for an engine's JSON-schema configuration (booleans, numbers, strings, string lists). */
@@ -175,6 +177,7 @@ export function ImportDialog({ open, onClose, initialFormat = "trivy" }: { open:
             {formats.map((f) => <option key={f} value={f}>{f === "sbom" ? "SBOM (CycloneDX / SPDX JSON)" : f === "prowler" ? "Prowler (OCSF JSON)" : titleCase(f)}</option>)}
           </Select>
         </Field>
+        <Alert>To send results on every build instead, use a pipeline token: <Link href="/integrations?tab=ci" className="text-accent hover:underline">Integrations → CI/CD pipelines</Link>.</Alert>
         <Field label="Results file" hint="Parsed by a background worker; a file in the wrong format fails the import with an explanation.">
           <Input type="file" required onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="py-1.5" />
         </Field>
@@ -190,7 +193,21 @@ export function ImportDialog({ open, onClose, initialFormat = "trivy" }: { open:
   );
 }
 
+const MODULE_FORMATS: Record<string, string[] | undefined> = {
+  web_api: ["zap", "nuclei"], supply_chain: ["trivy", "grype", "semgrep", "gitleaks", "sbom", "sarif"], cloud: ["checkov", "prowler"],
+  attack_surface: ["nmap", "nuclei"],
+};
+
 export function AssessmentsPanel({ module, allowImport }: { module: string; allowImport?: boolean }) {
+  return (
+    <div className="space-y-4">
+      <AssessmentList module={module} allowImport={allowImport} />
+      {allowImport && <UploadHistory formats={MODULE_FORMATS[module]} />}
+    </div>
+  );
+}
+
+function AssessmentList({ module, allowImport }: { module: string; allowImport?: boolean }) {
   const { data: me } = useMe();
   const { data: engines } = useGet<Obj[]>("/assessments/engines");
   const { data, error, isLoading, refetch } = useGet<Obj>("/assessments", { module, page_size: 50 }, { refetchInterval: 4000 });
@@ -201,6 +218,7 @@ export function AssessmentsPanel({ module, allowImport }: { module: string; allo
   const [editing, setEditing] = useState<Obj | null>(null);
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
+  const firstFormat = MODULE_FORMATS[module]?.[0];
   const moduleEngines = (engines ?? []).filter((e) => e.module === module && e.kind !== "scanner_import" && e.kind !== "ai_redteam");
   const canRun = can(me, "assessments:run");
 
@@ -288,7 +306,7 @@ export function AssessmentsPanel({ module, allowImport }: { module: string; allo
           </form>
         )}
       </Dialog>
-      {importing && <ImportDialog open onClose={() => setImporting(false)} />}
+      {importing && <ImportDialog open initialFormat={firstFormat} onClose={() => setImporting(false)} />}
     </Card>
   );
 }

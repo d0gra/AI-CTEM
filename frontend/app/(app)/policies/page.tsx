@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { Alert, Badge, Button, Card, Dialog, EmptyState, ErrorState, Field, Input, JsonBlock, PageHeader, Select, SeverityBadge, Skeleton, Stat, StatusBadge, Textarea } from "@/components/ui";
+import { Alert, Badge, Button, Card, Dialog, EmptyState, ErrorState, Field, Input, PageHeader, Select, SeverityBadge, Skeleton, Stat, StatusBadge, Textarea } from "@/components/ui";
 import { errorMessage } from "@/lib/api";
 import { formatDate, relativeTime } from "@/lib/format";
 import { can, useAction, useGet, useMe } from "@/lib/hooks";
 import type { Obj } from "@/types/api";
+import { describeRule, RuleBuilder, type Rule } from "@/features/rule-builder";
 
 function Detail({ id, onClose }: { id: string; onClose: () => void }) {
   const { data: me } = useMe();
@@ -24,8 +25,8 @@ function Detail({ id, onClose }: { id: string; onClose: () => void }) {
           </div>
           {(evaluate.error || requestException.error || decide.error) && <Alert tone="critical">{errorMessage(evaluate.error ?? requestException.error ?? decide.error)}</Alert>}
           <div className="grid gap-3 md:grid-cols-2">
-            <div><div className="mb-1 text-xs font-medium text-muted">Applies to ({data.entity_type}s matching)</div><JsonBlock value={data.scope} /></div>
-            <div><div className="mb-1 text-xs font-medium text-muted">Must satisfy</div><JsonBlock value={data.condition} /></div>
+            <div><div className="mb-1 text-xs font-medium text-muted">Applies to</div><p className="rounded-md bg-surface-2 p-2 font-mono text-xs">{data.entity_type}s where {describeRule(data.scope)}</p></div>
+            <div><div className="mb-1 text-xs font-medium text-muted">Must satisfy</div><p className="rounded-md bg-surface-2 p-2 font-mono text-xs">{describeRule(data.condition)}</p></div>
           </div>
           {data.framework_refs.length > 0 && <p className="text-xs text-muted">Framework references: {data.framework_refs.join("; ")}</p>}
           <div>
@@ -88,17 +89,18 @@ export default function PoliciesPage() {
   const [detail, setDetail] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [entityType, setEntityType] = useState<"asset" | "finding">("asset");
+  const [scope, setScope] = useState<Rule | null>({ field: "type", op: "eq", value: "llm_endpoint" });
+  const [condition, setCondition] = useState<Rule | null>({ field: "ai.rate_limited", op: "is_true" });
   if (error) return <ErrorState message={errorMessage(error)} onRetry={() => refetch()} />;
   const manage = can(me, "policies:manage");
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setFormError(null);
     const form = Object.fromEntries(new FormData(e.currentTarget)) as Obj;
-    try {
-      create.mutate({ ...form, scope: JSON.parse(form.scope || "{}"), condition: JSON.parse(form.condition) }, { onSuccess: () => setCreating(false) });
-    } catch {
-      setFormError("Scope and condition must be valid JSON.");
-    }
+    if (scope === null || condition === null) return setFormError("Fix the JSON in the scope or condition first.");
+    if (Object.keys(condition).length === 0) return setFormError("Add at least one condition the matching items must satisfy.");
+    create.mutate({ ...form, entity_type: entityType, scope, condition }, { onSuccess: () => setCreating(false) });
   };
   return (
     <>
@@ -144,11 +146,20 @@ export default function PoliciesPage() {
             <Field label="Key" hint="Lowercase letters, digits and hyphens."><Input name="key" required pattern="[a-z0-9][a-z0-9-]{2,78}" /></Field>
             <Field label="Name"><Input name="name" required minLength={3} /></Field>
             <Field label="Severity"><Select name="severity" defaultValue="medium">{["critical", "high", "medium", "low"].map((s) => <option key={s}>{s}</option>)}</Select></Field>
-            <Field label="Evaluated against"><Select name="entity_type"><option value="asset">Assets</option><option value="finding">Findings</option></Select></Field>
+            <Field label="Evaluated against"><Select value={entityType} onChange={(e) => setEntityType(e.target.value as "asset" | "finding")}><option value="asset">Assets</option><option value="finding">Findings</option></Select></Field>
           </div>
           <Field label="Description"><Textarea name="description" /></Field>
-          <Field label="Scope rule (JSON; {} = all)" hint={`Fields: ${(data?.fields.asset ?? []).slice(0, 12).join(", ")}…`}><Textarea name="scope" className="font-mono text-xs" defaultValue={'{"field": "type", "op": "eq", "value": "llm_endpoint"}'} /></Field>
-          <Field label="Condition rule (JSON)" hint={`Operators: ${(data?.operators ?? []).join(", ")}. Combine with {"all": [...]}, {"any": [...]}, {"not": {...}}.`}><Textarea name="condition" required className="font-mono text-xs" defaultValue={'{"field": "ai.rate_limited", "op": "is_true"}'} /></Field>
+          <div className="space-y-1.5">
+            <div className="text-xs font-medium text-muted">Applies to {entityType}s where</div>
+            <RuleBuilder key={`scope-${entityType}`} initial={scope ?? {}} fields={data?.fields[entityType] ?? []} operators={data?.operators ?? []}
+                         emptyLabel={`No conditions: applies to every ${entityType}.`} onChange={setScope} />
+          </div>
+          <div className="space-y-1.5">
+            <div className="text-xs font-medium text-muted">Each matching {entityType} must satisfy</div>
+            <RuleBuilder key={`condition-${entityType}`} initial={condition ?? {}} fields={data?.fields[entityType] ?? []} operators={data?.operators ?? []}
+                         emptyLabel="Add at least one condition." onChange={setCondition} />
+            <p className="text-xs text-muted">A value that is not recorded fails the condition, so a policy cannot pass for lack of data.</p>
+          </div>
           <div className="flex justify-end gap-2"><Button type="button" onClick={() => setCreating(false)}>Cancel</Button><Button type="submit" variant="primary" loading={create.isPending}>Create</Button></div>
         </form>
       </Dialog>

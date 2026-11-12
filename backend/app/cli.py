@@ -4,6 +4,7 @@
     python -m app.cli verify-audit <org-slug>     recompute an organization's audit hash chain
     python -m app.cli rotate-secrets              re-encrypt stored secrets with the first key in CTEM_ENCRYPTION_KEYS
     python -m app.cli run-pending                 execute queued jobs once in this process (no scheduler)
+    python -m app.cli seed-demo                   create the demo organization and its accounts (CTEM_DEMO_MODE=true only)
 """
 
 import sys
@@ -65,6 +66,10 @@ def main() -> None:
         verify_audit(args[1])
     elif args == ["rotate-secrets"]:
         rotate_secrets()
+    elif args == ["seed-demo"]:
+        from app.domains.demo import seed
+
+        print(seed())
     elif args == ["run-pending"]:
         from app.workers.queue import run_pending
 

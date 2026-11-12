@@ -35,6 +35,7 @@ from app.models.identity import (
     UserToken,
 )
 from app.models.ops import (
+    ApiToken,
     AuditEvent,
     Integration,
     Notification,
@@ -45,6 +46,7 @@ from app.models.ops import (
 )
 
 __all__ = [
+    "ApiToken",
     "AIAgent", "AIAssessment", "AIAssessmentTest", "AIAsset", "AIFinding", "AIIntegration", "AIModel", "AIUsage",
     "Assessment", "AssessmentRun", "AssessmentTarget", "Asset", "AssetDiscoveryEvent", "AssetRelationship",
     "AttackPath", "AttackPathEdge", "AttackPathNode", "AuditEvent", "Evidence", "Finding", "FindingEvent",

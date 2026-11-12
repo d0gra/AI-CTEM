@@ -46,11 +46,13 @@ export const findingColumns: Column<Finding>[] = [
   },
 ];
 
-export function FindingsTable({ params, pageSize }: { params?: Params; pageSize?: number }) {
+export function FindingsTable({ params, pageSize, urlState }: { params?: Params; pageSize?: number; urlState?: boolean }) {
   return (
     <DataTable<Finding>
       path="/findings"
       params={params}
+      urlState={urlState}
+      passthrough={urlState ? [{ key: "source", label: "Source" }, { key: "asset_id", label: "Asset" }, { key: "owner_user_id", label: "Owner" }] : undefined}
       columns={findingColumns}
       pageSize={pageSize}
       searchable
@@ -64,6 +66,7 @@ export function FindingsTable({ params, pageSize }: { params?: Params; pageSize?
         { key: "open_only", label: "Open only" },
         { key: "overdue", label: "Past SLA" },
         { key: "kev", label: "Known exploited" },
+        { key: "unassigned", label: "Unassigned" },
       ]}
       rowHref={(f) => `/findings/${f.id}`}
       empty={{ title: "No findings match", body: "Findings appear here after an assessment runs or scanner results are imported." }}

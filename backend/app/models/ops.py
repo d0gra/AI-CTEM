@@ -26,6 +26,23 @@ class Integration(Base, IdMixin, TenantMixin, TimestampMixin):
     last_sync_at: Mapped[datetime | None]  # last successful assessment that used this integration
 
 
+class ApiToken(Base, IdMixin, TenantMixin):
+    """Machine credential for CI/CD pipelines. Only the hash is stored; scopes are deliberately narrow."""
+
+    __tablename__ = "api_tokens"
+
+    name: Mapped[str] = mapped_column(String(120))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    prefix: Mapped[str] = mapped_column(String(16))  # shown in the UI to identify the token
+    scopes: Mapped[list[str]] = mapped_column(ARRAY(String(32)), default=list, server_default="{}")
+    created_by_user_id: Mapped[uuid.UUID | None] = fk("users.id", ondelete="SET NULL", nullable=True, index=False)
+    created_at: Mapped[datetime]
+    expires_at: Mapped[datetime | None]
+    last_used_at: Mapped[datetime | None]
+    last_used_ip: Mapped[str | None] = mapped_column(String(64))
+    revoked_at: Mapped[datetime | None]
+
+
 class Notification(Base, IdMixin, TenantMixin):
     __tablename__ = "notifications"
     __table_args__ = (

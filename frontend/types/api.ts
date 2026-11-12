@@ -22,6 +22,7 @@ export interface Me {
   email_verified: boolean;
   email_verification_required: boolean;
   email_delivery_configured: boolean;
+  demo_mode?: boolean;
 }
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";

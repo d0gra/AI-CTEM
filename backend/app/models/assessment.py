@@ -62,8 +62,7 @@ class AssessmentTarget(Base, IdMixin, TenantMixin):
     __tablename__ = "assessment_targets"
 
     assessment_id: Mapped[uuid.UUID] = fk("assessments.id")
-    asset_id: Mapped[uuid.UUID | None] = fk("assets.id", nullable=True)
-    kind: Mapped[str] = mapped_column(String(24))  # domain | url | host | cidr | path | asset
+    kind: Mapped[str] = mapped_column(String(24))  # domain | url | cidr | path
     value: Mapped[str] = mapped_column(String(1024))
 
 

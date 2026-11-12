@@ -214,6 +214,10 @@ def create_asset(body: AssetIn, db: Db, principal: Principal = require("assets:w
         raise Conflict("An asset with this type and identifier already exists", details={"asset_id": str(asset.id)})
     audit_event(db, principal, "asset.created", entity_type="asset", entity_id=asset.id,
                 data={"type": asset.type, "identifier": asset.identifier})
+    if asset.type in AI_ASSET_TYPES:
+        from app.domains.ai.posture import request_review
+
+        request_review(db, principal.organization_id)
     return AssetOut.model_validate(asset)
 
 
@@ -259,6 +263,10 @@ def update_asset(asset_id: uuid.UUID, body: AssetPatch, db: Db, principal: Princ
         ))
         audit_event(db, principal, "asset.updated", entity_type="asset", entity_id=asset.id,
                     data={"fields": sorted(diff)})
+        if asset.type in AI_ASSET_TYPES:
+            from app.domains.ai.posture import request_review
+
+            request_review(db, principal.organization_id)
         if {"exposure", "criticality", "data_sensitivity"} & set(diff):
             from app.domains.risk import service as risk
 

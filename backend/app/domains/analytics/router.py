@@ -115,6 +115,9 @@ def claude_status(db: Db, principal: Principal = require("ai_analytics:use")) ->
 @router.post("/claude/connect")
 def claude_connect(body: ClaudeConnectIn, db: Db, principal: Principal = require("admin:org")) -> dict:
     """Validate the credential against the Claude Models API, store it, and enable AI analysis with it."""
+    from app.domains.demo import guard_credentials
+
+    guard_credentials(True)
     integration = _claude_integration(db)
     stored = json.loads(decrypt_secret(integration.credentials_encrypted)) if integration and integration.credentials_encrypted else {}
     key = (body.api_key or "").strip() or (stored.get("api_key", "") if body.credential_source == "api_key" else "")

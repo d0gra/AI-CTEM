@@ -6,10 +6,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.deps import Db, Paging, Principal, audit_event, paginate, require
-from app.core import storage
 from app.core.config import get_settings
 from app.core.errors import NotFound, ValidationFailed
-from app.core.security import sha256_hex
 from app.db.base import utcnow
 from app.domains.assessments import service
 from app.models import Assessment, AssessmentRun, AssessmentTarget, Job
@@ -57,7 +55,7 @@ def _out(db: Db, a: Assessment) -> dict:
             "active": spec.active if spec else None, "permission": spec.permission if spec else None, "config": a.config, "integration_id": a.integration_id,
             "schedule_interval_minutes": a.schedule_interval_minutes, "next_run_at": a.next_run_at,
             "enabled": a.enabled, "created_at": a.created_at,
-            "targets": [{"kind": t.kind, "value": t.value, "asset_id": t.asset_id} for t in targets],
+            "targets": [{"kind": t.kind, "value": t.value} for t in targets],
             "last_run": _run_out(last) if last else None}
 
 
@@ -92,7 +90,8 @@ def list_engines(_: Principal = require("assessments:read")) -> list[dict]:
 @router.get("/assessments")
 def list_assessments(db: Db, paging: Paging, _: Principal = require("assessments:read"),
                      module: str | None = None, kind: str | None = None) -> dict:
-    stmt = select(Assessment).order_by(Assessment.created_at.desc())
+    """Assessment definitions. Report uploads are listed separately under /imports."""
+    stmt = select(Assessment).where(Assessment.kind != "scanner_import").order_by(Assessment.created_at.desc())
     kinds = [k for k, s in service.ENGINES.items() if s.module == module] if module else None
     if kinds is not None:
         stmt = stmt.where(Assessment.kind.in_(kinds))
@@ -237,25 +236,11 @@ async def import_scanner_results(
     target: str | None = Form(None, max_length=1024, description="Asset identifier when the report does not name its target"),
 ) -> dict:
     """Ingest a results file produced by a supported scanner. Parsing happens in a worker."""
-    from app.integrations.scanners.parsers import PARSERS
+    from app.domains.ci.service import create_import
 
-    if format not in PARSERS:
-        raise ValidationFailed(f"Unsupported format {format!r}", details={"formats": sorted(PARSERS)})
-    limit = get_settings().max_upload_bytes
-    data = await file.read(limit + 1)
-    if len(data) > limit:
-        raise ValidationFailed(f"File exceeds the {limit // (1024 * 1024)} MB limit")
-    if not data.strip():
-        raise ValidationFailed("File is empty")
-    key = storage.new_key(principal.organization_id, "scanner-imports", ".dat")
-    storage.get_storage().put(key, data, "application/octet-stream")
-    a = Assessment(organization_id=principal.organization_id, kind="scanner_import",
-                   name=f"Import: {format} ({(file.filename or 'upload')[-80:]})",
-                   config={"format": format, "storage_key": key, "sha256": sha256_hex(data), "target": target,
-                           "filename": (file.filename or "")[-200:]},
-                   created_by_user_id=principal.user_id)
-    db.add(a)
-    db.flush()
+    data = await file.read(get_settings().max_upload_bytes + 1)
+    a = create_import(db, organization_id=principal.organization_id, fmt=format, data=data, filename=file.filename or "",
+                      target=target, created_by_user_id=principal.user_id)
     audit_event(db, principal, "scanner.import", entity_type="assessment", entity_id=a.id,
                 data={"format": format, "sha256": a.config["sha256"], "size": len(data)})
     return _run_out(service.start_run(db, a, principal))

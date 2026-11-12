@@ -362,3 +362,56 @@ def test_operations_cli(org, capsys):
     cli.rotate_secrets()
     assert "Re-encrypted" in capsys.readouterr().out
     assert org.ok("GET", "/integrations")[0]["has_credentials"] is True
+
+
+# --- Invitations and unrecorded AI posture -------------------------------------------------
+
+def test_invited_user_sets_own_password(app, org):
+    from urllib.parse import parse_qs, urlparse
+
+    from fastapi.testclient import TestClient
+
+    roles = {r["key"]: r["id"] for r in org.ok("GET", "/admin/roles")}
+    email = f"invitee-{uuid.uuid4().hex[:8]}@example.com"
+    created = org.ok("POST", "/admin/users", json={"email": email, "full_name": "Invitee", "role_id": roles["security_analyst"]})
+    link = created["invite_link"]
+    assert link and "/reset-password?token=" in link
+    # nobody knows a password for the account until the invitee picks one
+    assert TestClient(app).post("/api/v1/auth/login", json={"email": email, "password": PASSWORD}).status_code == 401
+    # re-issuing invalidates the first link
+    second = org.ok("POST", f"/admin/users/{created['id']}/invite")["invite_link"]
+    first_token = parse_qs(urlparse(link).query)["token"][0]
+    token = parse_qs(urlparse(second).query)["token"][0]
+    http = TestClient(app)
+    assert http.post("/api/v1/auth/password/reset", json={"token": first_token, "new_password": "An0ther-long-passphrase!"}).status_code >= 400
+    assert http.post("/api/v1/auth/password/reset", json={"token": token, "new_password": "An0ther-long-passphrase!"}).status_code == 204
+    me = login(app, email, "An0ther-long-passphrase!").get("/auth/me").json()
+    assert me["email_verified"] is True
+
+
+def test_rag_app_added_as_asset_is_assessed(org, drain):
+    asset = org.ok("POST", "/assets", json={"type": "rag_application", "name": "support-rag", "identifier": "rag://support",
+                                            "exposure": "internet", "environment": "production", "criticality": "high"})
+    assert any(a["id"] == asset["id"] for a in org.ok("GET", "/ai/assets")["items"])
+    drain()
+    findings = org.ok("GET", "/findings", params={"asset_id": asset["id"], "page_size": 100})["items"]
+    rules = {f["rule_id"] for f in findings}
+    assert "ai.posture.unrecorded" in rules, rules
+    gap = next(f for f in findings if f["rule_id"] == "ai.posture.unrecorded")
+    assert gap["severity"] == "medium"
+
+
+def test_recording_posture_resolves_gap_findings(org, drain):
+    asset = org.ok("POST", "/ai/assets", json={"type": "rag_application", "name": "hr-rag", "identifier": "rag://hr",
+                                               "exposure": "internet", "environment": "production"})
+    drain()
+    rules = lambda status: {f["rule_id"] for f in org.ok("GET", "/findings", params={"asset_id": asset["id"], "status": status})["items"]}  # noqa: E731
+    assert "ai.posture.unrecorded" in rules("new")
+    org.ok("PATCH", f"/ai/assets/{asset['id']}", json={"auth_required": False})
+    drain()
+    assert "ai.rag.vector_db_exposed" in rules("new")
+    org.ok("PATCH", f"/ai/assets/{asset['id']}", json={"auth_required": True, "tenant_isolation": "enforced", "document_level_authorization": True,
+                                                       "ingests_untrusted_content": False})
+    drain()
+    assert {"ai.posture.unrecorded", "ai.rag.vector_db_exposed"} <= rules("remediated")
+    assert not {"ai.posture.unrecorded", "ai.rag.vector_db_exposed"} & rules("new")

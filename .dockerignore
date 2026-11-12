@@ -1,0 +1,19 @@
+# Build context for Dockerfile.demo (repository root). Keep local data and build output out of images.
+.git
+.local
+.claude
+**/.env
+**/.env.*
+!**/.env.example
+**/node_modules
+**/.next
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+backend/var
+backend/tests
+frontend/tests
+frontend/coverage
+docs

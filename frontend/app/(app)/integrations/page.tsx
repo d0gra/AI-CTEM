@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState, type FormEvent } from "react";
 import { Alert, Badge, Button, Card, Dialog, EmptyState, Field, Input, PageHeader, Skeleton, StatusBadge, Tabs } from "@/components/ui";
 import { ImportDialog } from "@/features/assessments";
+import { CiPipelines, UploadHistory } from "@/features/ci";
 import { errorMessage } from "@/lib/api";
 import { relativeTime, titleCase } from "@/lib/format";
 import { can, useAction, useGet, useMe } from "@/lib/hooks";
@@ -78,7 +80,16 @@ function ConnectorState({ c }: { c: Obj }) {
   return null;
 }
 
+type Tab = "configured" | "catalog" | "ci" | "uploads";
+const TABS: Tab[] = ["configured", "catalog", "ci", "uploads"];
+
 export default function IntegrationsPage() {
+  return <Suspense><Integrations /></Suspense>;
+}
+
+function Integrations() {
+  const router = useRouter();
+  const search = useSearchParams();
   const { data: me } = useMe();
   const { data: catalog } = useGet<Obj[]>("/integrations/catalog", undefined, { refetchInterval: 15_000 });
   const { data: configured } = useGet<Obj[]>("/integrations");
@@ -87,7 +98,9 @@ export default function IntegrationsPage() {
   const test = useAction<{ id: string }, Obj>("POST", (b) => `/integrations/${b.id}/test`);
   const remove = useAction<{ id: string }, Obj>("DELETE", (b) => `/integrations/${b.id}`);
   const sync = useAction<{ source: string }, Obj>("POST", (b) => `/intel/sync?source=${b.source}`);
-  const [tab, setTab] = useState<"configured" | "catalog">("configured");
+  const requested = search.get("tab") as Tab | null;
+  const tab: Tab = requested && TABS.includes(requested) ? requested : "configured";
+  const setTab = (next: Tab) => router.replace(next === "configured" ? "/integrations" : `/integrations?tab=${next}`, { scroll: false });
   const [adding, setAdding] = useState<Obj | null>(null);
   const [editing, setEditing] = useState<Obj | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
@@ -124,11 +137,14 @@ export default function IntegrationsPage() {
 
   return (
     <>
-      <PageHeader title="Integrations" description="Connections to clouds, scanners, model endpoints, ticketing and notification systems. Credentials are encrypted at rest and never returned by the API." />
+      <PageHeader title="Integrations" description="Connections to clouds, scanners, model endpoints, ticketing and notification systems, and pipelines that send scanner results. Credentials are encrypted at rest and never returned by the API." />
       {(test.error || remove.error || update.error || sync.error) && <div className="mb-3"><Alert tone="critical">{errorMessage(test.error ?? remove.error ?? update.error ?? sync.error)}</Alert></div>}
       {test.data && <div className="mb-3"><Alert tone={test.data.ok ? "ok" : "critical"}>{test.data.ok ? "Connection succeeded: " : `Connection failed (${test.data.error_class}): `}{test.data.detail}</Alert></div>}
       {sync.isSuccess && <div className="mb-3"><Alert tone="ok">Synchronisation queued. The status updates when the worker finishes.</Alert></div>}
-      <Tabs value={tab} onChange={setTab} tabs={[{ id: "configured", label: "Configured", count: configured?.length }, { id: "catalog", label: "Available integrations", count: catalog?.length }]} />
+      <Tabs value={tab} onChange={setTab} tabs={[{ id: "configured", label: "Configured", count: configured?.length }, { id: "catalog", label: "Available integrations", count: catalog?.length },
+                                         { id: "ci", label: "CI/CD pipelines" }, { id: "uploads", label: "Uploaded results" }]} />
+      {tab === "ci" && <CiPipelines />}
+      {tab === "uploads" && <UploadHistory pageSize={50} title="All uploaded results" />}
       {tab === "configured" && (
         <Card>
           {!configured ? <Skeleton className="h-20" /> : configured.length === 0 ? <EmptyState title="No integrations configured">Choose one from Available integrations.</EmptyState> : (

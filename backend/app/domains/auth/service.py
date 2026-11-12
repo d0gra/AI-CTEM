@@ -123,6 +123,19 @@ def issue_email_verification(db: Session, user: User) -> None:
                        f"Confirm your email address for the CTEM platform:\n\n{link}\n", dev_link=link)
 
 
+INVITE_TTL = timedelta(days=7)
+
+
+def issue_invitation(db: Session, user: User) -> str:
+    """A password-set link valid for 7 days. Emailed when SMTP is configured, and returned to the
+    administrator either way so it can be shared through another channel."""
+    token = _issue_token(db, user, "password_reset", INVITE_TTL)
+    link = f"{get_settings().public_base_url}/reset-password?token={token}&invite=1"
+    send_account_email(user.email, "You have been invited to the CTEM platform",
+                       f"An account has been created for you. Choose your password within 7 days:\n\n{link}\n", dev_link=link)
+    return link
+
+
 def _consume_token(db: Session, token: str, purpose: str) -> User:
     row = db.execute(
         select(UserToken).where(UserToken.token_hash == hash_token(token), UserToken.purpose == purpose)
@@ -163,9 +176,13 @@ def request_password_reset(email: str) -> None:
 def reset_password(token: str, new_password: str) -> None:
     with system_session() as db:
         user = _consume_token(db, token, "password_reset")
+        from app.domains.demo import guard_account
+
+        guard_account(user.email, "change its password")
         validate_password(new_password, user.email)
         user.password_hash = hash_password(new_password)
         user.failed_login_count, user.locked_until = 0, None
+        user.email_verified_at = user.email_verified_at or utcnow()  # the link proved control of the mailbox
         revoke_all_sessions(db, user.id)
         audit.record(db, organization_id=user.organization_id, action="auth.password_reset",
                      actor_user_id=user.id, actor_email=user.email)
@@ -196,7 +213,9 @@ def login(email: str, password: str, totp_code: str | None) -> tuple[User, UserS
             raise Unauthorized("Account temporarily locked due to repeated failed sign-in attempts")
         if not verify_password(password, user.password_hash) or not user.is_active:
             user.failed_login_count += 1
-            if user.failed_login_count >= settings.max_failed_logins:
+            from app.domains.demo import is_demo_account
+
+            if user.failed_login_count >= settings.max_failed_logins and not is_demo_account(user.email):  # shared demo logins are never locked
                 user.locked_until = now + timedelta(minutes=settings.lockout_minutes)
                 user.failed_login_count = 0
             audit.record(db, organization_id=user.organization_id, action="auth.login", actor_user_id=user.id,

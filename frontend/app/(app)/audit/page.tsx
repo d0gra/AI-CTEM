@@ -19,6 +19,7 @@ export default function AuditPage() {
       {error && <div className="mb-3"><Alert tone="critical">{errorMessage(error)}</Alert></div>}
       {chain && <div className="mb-3"><Alert tone={chain.valid ? "ok" : "critical"}>{chain.valid ? `Hash chain verified across ${chain.events} events.` : `Integrity check FAILED at sequence ${chain.first_invalid_seq}. The log may have been altered outside the application.`}</Alert></div>}
       <DataTable<Obj>
+        urlState
         path="/audit/events" pageSize={50}
         filters={[
           { key: "outcome", label: "Outcome", options: ["success", "failure", "denied"] },

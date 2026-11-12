@@ -100,6 +100,10 @@ def check_scope(db: Session, target: str, *, active: bool) -> ScopeDecision:
     covering = [e for e in entries if _covers(e, target)]
     if not covering:
         raise OutOfScope(f"Target {target!r} is not covered by an authorized scope entry")
+    if active and get_settings().demo_mode:
+        from app.domains.demo import ACTIVE_DISABLED
+
+        raise OutOfScope(ACTIVE_DISABLED)
     if active:
         covering = [e for e in covering if e.allow_active]
         if not covering:

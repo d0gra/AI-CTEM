@@ -53,8 +53,9 @@ class UserOut(BaseModel):
 class UserIn(BaseModel):
     email: EmailStr
     full_name: str = Field(min_length=1, max_length=200)
-    password: str = Field(min_length=12, max_length=256)
     role_id: uuid.UUID
+    password: str | None = Field(default=None, min_length=12, max_length=256,
+                                 description="Optional. Without it the user is invited to choose their own password.")
 
 
 class UserPatch(BaseModel):
@@ -177,27 +178,53 @@ def directory(db: Db, _: CurrentUser) -> dict:
     }
 
 
-@router.post("/users", response_model=UserOut, status_code=201)
-def create_user(body: UserIn, db: Db, principal: Principal = require("admin:users")) -> UserOut:
+@router.post("/users", status_code=201)
+def create_user(body: UserIn, db: Db, principal: Principal = require("admin:users")) -> dict:
     role = db.get(Role, body.role_id)
     if role is None:
         raise NotFound("Role not found")
     _check_grantable(principal, role.permission_keys)
     email = body.email.lower()
-    validate_password(body.password, email)
+    if body.password:
+        validate_password(body.password, email)
     from app.db.session import system_session
 
     with system_session() as sysdb:  # email uniqueness is global across organizations
         if sysdb.execute(select(User.id).where(User.email == email)).first():
             raise Conflict("A user with this email already exists")
+    from app.core.security import new_token
+
     user = User(organization_id=principal.organization_id, email=email, full_name=body.full_name,
-                password_hash=hash_password(body.password), role_id=role.id)
+                password_hash=hash_password(body.password or new_token(32)), role_id=role.id)
     db.add(user)
     db.flush()
-    issue_email_verification(db, user)
-    audit_event(db, principal, "user.created", entity_type="user", entity_id=user.id, data={"role": role.key})
+    invite_link = None
+    if body.password:
+        issue_email_verification(db, user)
+    else:
+        from app.domains.auth.service import issue_invitation
+
+        invite_link = issue_invitation(db, user)
+    audit_event(db, principal, "user.created", entity_type="user", entity_id=user.id, data={"role": role.key, "invited": not body.password})
     db.refresh(user)
-    return _user_out(user)
+    return {**_user_out(user).model_dump(), "invite_link": invite_link}
+
+
+@router.post("/users/{user_id}/invite")
+def reinvite_user(user_id: uuid.UUID, db: Db, principal: Principal = require("admin:users")) -> dict:
+    """Issue a fresh link for the user to set a password (replaces any earlier link)."""
+    from app.domains.auth.service import issue_invitation
+
+    user = db.get(User, user_id)
+    if user is None:
+        raise NotFound("User not found")
+    from app.domains.demo import guard_account
+
+    guard_account(user.email, "issue a password link for it")
+    _check_grantable(principal, user.role.permission_keys)
+    link = issue_invitation(db, user)
+    audit_event(db, principal, "user.invite_issued", entity_type="user", entity_id=user.id)
+    return {"invite_link": link}
 
 
 @router.patch("/users/{user_id}", response_model=UserOut)
@@ -205,6 +232,9 @@ def update_user(user_id: uuid.UUID, body: UserPatch, db: Db, principal: Principa
     user = db.get(User, user_id)
     if user is None:
         raise NotFound("User not found")
+    from app.domains.demo import guard_account
+
+    guard_account(user.email, "change it")
     if user.id == principal.user_id and (body.role_id is not None or body.is_active is False):
         raise Forbidden("You cannot change your own role or deactivate your own account")
     _check_grantable(principal, user.role.permission_keys)  # cannot manage more privileged accounts

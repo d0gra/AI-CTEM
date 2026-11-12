@@ -7,7 +7,7 @@ export default function FindingsPage() {
   return (
     <>
       <PageHeader title="Findings" description="Every finding across all modules, ranked by contextual risk. Sorting, filtering and paging are performed by the server." />
-      <FindingsTable />
+      <FindingsTable urlState />
     </>
   );
 }

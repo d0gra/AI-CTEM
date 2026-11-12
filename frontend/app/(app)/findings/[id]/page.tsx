@@ -11,6 +11,7 @@ import { formatBytes, formatDate, titleCase } from "@/lib/format";
 import { can, useAction, useGet, useMe } from "@/lib/hooks";
 import { acceptanceSchema, type AcceptanceValues } from "@/lib/schemas";
 import type { Obj } from "@/types/api";
+import { TaskDialog } from "@/features/remediation";
 import { useQueryClient } from "@tanstack/react-query";
 
 function Prose({ text }: { text: string }) {
@@ -81,12 +82,12 @@ export default function FindingDetailPage() {
   const retest = useAction<Obj>("POST", `/findings/${id}/retest`);
   const verify = useAction<Obj>("POST", `/findings/${id}/verify`);
   const comment = useAction<Obj>("POST", `/findings/${id}/comments`);
-  const createTask = useAction<Obj>("POST", "/remediation/tasks");
   const explain = useAction<Obj, Obj>("POST", `/analytics/findings/${id}/explain`);
   const [note, setNote] = useState("");
   const [status, setStatus] = useState("");
   const [text, setText] = useState("");
   const [accepting, setAccepting] = useState(false);
+  const [tasking, setTasking] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [verifyNote, setVerifyNote] = useState("");
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -94,7 +95,7 @@ export default function FindingDetailPage() {
   if (error) return <ErrorState message={errorMessage(error)} onRetry={() => refetch()} />;
   if (isLoading || !f) return <Skeleton className="h-64 w-full" />;
   const canWrite = can(me, "findings:write");
-  const actionError = patch.error ?? retest.error ?? verify.error ?? comment.error ?? createTask.error ?? explain.error;
+  const actionError = patch.error ?? retest.error ?? verify.error ?? comment.error ?? explain.error;
   const open = ["new", "triaged", "assigned", "in_progress", "pending_validation"].includes(f.status);
 
   const upload = async (e: FormEvent<HTMLFormElement>) => {
@@ -259,7 +260,7 @@ export default function FindingDetailPage() {
                   <div className="flex flex-wrap gap-2 border-t border-border pt-3">
                     {f.can_automated_retest && can(me, "assessments:run") && <Button size="sm" variant="primary" loading={retest.isPending} onClick={() => retest.mutate({})}>Retest</Button>}
                     <Button size="sm" onClick={() => setVerifying(true)}>Record manual verification</Button>
-                    {can(me, "remediation:write") && <Button size="sm" loading={createTask.isPending} onClick={() => createTask.mutate({ finding_id: id })}>Create remediation task</Button>}
+                    {can(me, "remediation:write") && <Button size="sm" onClick={() => setTasking(true)}>Create remediation task</Button>}
                     {can(me, "risk:request") && <Button size="sm" onClick={() => setAccepting(true)}>Request risk acceptance</Button>}
                   </div>
                 )}
@@ -284,6 +285,7 @@ export default function FindingDetailPage() {
           </div>
         </div>
       </Dialog>
+      {tasking && <TaskDialog finding={f} onClose={() => setTasking(false)} />}
     </>
   );
 }

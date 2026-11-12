@@ -132,8 +132,10 @@ def test_repository_ai_discovery(org, drain, repo, monkeypatch):
     drain()
     assert org.ok("GET", f"/findings/{target['id']}")["status"] == "remediated"
 
+    # The automatic posture pass also flags the newly discovered AI assets that have no owner.
+    assert {f["rule_id"] for f in org.ok("GET", "/findings?domain=shadow_ai&page_size=100")["items"]} == {"ai.shadow.unapproved_provider", "ai.governance.no_owner"}
     dash = org.ok("GET", "/dashboard/ai")
-    assert dash["assets"]["mcp_servers"] == 3 and dash["assets"]["models"] == 3 and dash["findings"]["shadow_ai"] == 3
+    assert dash["assets"]["mcp_servers"] == 3 and dash["assets"]["models"] == 3 and dash["findings"]["shadow_ai"] >= 3
     assert dash["findings"]["model_supply_chain"] >= 3 and dash["findings"]["mcp"] >= 5 and dash["findings"]["vulnerable_ai_frameworks"] == 1
     assert {"provider": "anthropic", "assets": 1} in dash["unapproved_providers"]
     assert "not observed" in org.ok("GET", "/ai/governance")["visibility_note"]

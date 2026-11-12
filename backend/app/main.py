@@ -78,7 +78,8 @@ def create_app() -> FastAPI:
     async def request_middleware(request: Request, call_next):
         request_id = request.headers.get("x-request-id", "")[:64] or uuid.uuid4().hex
         ip = client_ip(request)
-        set_request_context(RequestContext(request_id=request_id, ip_address=ip,
+        # A public demo is shared by strangers: do not record their addresses where other visitors can read them.
+        set_request_context(RequestContext(request_id=request_id, ip_address=None if settings.demo_mode else ip,
                                            user_agent=request.headers.get("user-agent")))
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(request_id=request_id)
