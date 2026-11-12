@@ -6,6 +6,12 @@
 
 Discover what you own, assess it inside an authorized scope, rank findings by real-world risk, trace attack paths, and close the loop with verified remediation, for cloud, web, code and AI systems in one data model.
 
+<a href="https://ai-ctem.onrender.com/"><img alt="Live demo" src="https://img.shields.io/badge/%E2%96%B6%20LIVE%20DEMO-ai--ctem.onrender.com-2ea44f?style=for-the-badge"></a>
+
+### [▶ Try the live demo → ai-ctem.onrender.com](https://ai-ctem.onrender.com/)
+
+One-click sign-in for every role, no sign-up needed · password `Demo-CTEM-2026!` · the first visit after a quiet spell takes about a minute to wake the free instance
+
 [![CI](https://github.com/d0gra/AI-CTEM/actions/workflows/ci.yml/badge.svg)](https://github.com/d0gra/AI-CTEM/actions/workflows/ci.yml)
 ![Version](https://img.shields.io/badge/version-0.3.0-informational)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
@@ -14,7 +20,7 @@ Discover what you own, assess it inside an authorized scope, rank findings by re
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)
 
-[Overview](#overview) · [Capabilities](#capabilities) · [AI security](#ai-security) · [Architecture](#architecture) · [Security model](#security-model) · [Deploy](#deployment-options) · [Integrations](#integrations) · [Docs](#documentation)
+[Live demo](https://ai-ctem.onrender.com/) · [Overview](#overview) · [Capabilities](#capabilities) · [AI security](#ai-security) · [Architecture](#architecture) · [Security model](#security-model) · [Deploy](#deployment-options) · [Integrations](#integrations) · [Docs](#documentation)
 
 </div>
 
@@ -172,6 +178,8 @@ This starts PostgreSQL (creating the owner and runtime roles), Redis, a one-shot
 
 ### Public demo on Render
 
+**Live at <https://ai-ctem.onrender.com/>.**
+
 `Dockerfile.demo` runs PostgreSQL, the API with an embedded worker, and the web tier in one container sized for Render's **free plan** (measured peak about 370 MB of the 512 MB limit). The sign-in page lists one account per role with one-click sign-in:
 
 | Role | Email | Password |
@@ -268,7 +276,7 @@ cd backend  && uv run pytest                                  # 113 tests agains
 cd frontend && pnpm lint && pnpm typecheck && pnpm test && pnpm build
 ```
 
-CI runs ruff, mypy (advisory), pytest with coverage, `pip-audit`, ESLint, TypeScript, Vitest, a production build, `pnpm audit`, Semgrep SAST, and image builds with a Trivy scan and a demo-image smoke test.
+CI runs ruff, mypy (advisory), pytest with coverage, `pip-audit`, ESLint, TypeScript, Vitest, a production build, `pnpm audit`, Semgrep SAST, and image builds with a demo-image smoke test.
 
 ---
 

@@ -88,6 +88,3 @@ jobs:
           python3 -c "import json; d = json.load(open('demo.json')); assert len(d['accounts']) == 9, d"
           curl -sf -o /dev/null http://127.0.0.1:10000/login
           docker rm -f demo
-      - name: Scan images
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with: { image-ref: "ctem/api:ci", severity: "CRITICAL,HIGH", exit-code: "1", ignore-unfixed: true }

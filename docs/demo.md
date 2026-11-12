@@ -1,5 +1,7 @@
 # Public demo image
 
+**Live demo: <https://ai-ctem.onrender.com/>** (Render free plan; the first visit after 15 idle minutes takes about a minute to wake).
+
 `Dockerfile.demo` builds a single container for showing the platform on a host that runs one service, such as Render's free plan (512 MB). It contains PostgreSQL, the API with the job worker running on a thread of the same process, and the web server. It is **not a production deployment**: data lives inside the container and is lost on every restart or redeploy, and the sign-in details are published. For real use, see [deployment.md](deployment.md).
 
 ## What a visitor gets
