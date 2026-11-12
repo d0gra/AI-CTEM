@@ -6,7 +6,7 @@
 
 Discover what you own, assess it inside an authorized scope, rank findings by real-world risk, trace attack paths, and close the loop with verified remediation, for cloud, web, code and AI systems in one data model.
 
-[![CI](https://github.com/d0gra/ctem-ai-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/d0gra/ctem-ai-platform/actions/workflows/ci.yml)
+[![CI](https://github.com/d0gra/AI-CTEM/actions/workflows/ci.yml/badge.svg)](https://github.com/d0gra/AI-CTEM/actions/workflows/ci.yml)
 ![Version](https://img.shields.io/badge/version-0.3.0-informational)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)
