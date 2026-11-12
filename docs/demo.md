@@ -33,7 +33,15 @@ With `CTEM_DEMO_SAMPLE_DATA=true` (the default), the seed writes a small, delibe
 ## Deploy on Render
 
 1. Push the repository to GitHub or GitLab.
-2. In Render, choose **New → Blueprint**, select the repository and apply `render.yaml`. Or choose **New → Web Service → Existing image / Docker**, set the Dockerfile path to `Dockerfile.demo` and the context to the repository root, and add `CTEM_DEMO_MODE=true`.
+2. In Render, choose **New → Blueprint**, select the repository and apply `render.yaml`. Or create the service by hand: choose **New → Web Service**, pick the repository and **Docker**, and set:
+   - Root Directory: empty;
+   - Dockerfile Path: `./Dockerfile.demo`;
+   - Docker Build Context Directory: `.`;
+   - Instance Type: Free;
+   - Health Check Path: `/login`;
+   - environment variable `CTEM_DEMO_MODE` = `true`.
+
+   A service created by hand uses its dashboard settings, not `render.yaml`.
 3. The blueprint uses the Free plan. Open the service URL once the deploy finishes. Startup (database setup, migrations, seed) takes a minute or two on the free plan's CPU share; the sample analysis and feed sync then run in the background for a few more minutes.
 
 Render routes to the port in `PORT` (10000 by default). `CTEM_PUBLIC_BASE_URL` defaults to Render's `RENDER_EXTERNAL_URL`, so links in the app use the public address.
@@ -41,6 +49,10 @@ Render routes to the port in `PORT` (10000 by default). `CTEM_PUBLIC_BASE_URL` d
 Render's free web services have 0.1 CPU and 512 MB of memory, and their filesystem is ephemeral. Render spins them down after 15 minutes without inbound traffic and may restart them at any time; waking takes about a minute. Each workspace gets 750 free instance hours a month, and a spun-down service uses none.
 
 Every wake therefore starts a clean demo. That reset is useful for a public demo, but anything visitors create is lost.
+
+**Reading the start-up log.** Each step logs a timestamp: `web server starting`, `initialising database`, `starting database`, `applying migrations`, `seeding demo accounts and sample data`, `API starting` and `API ready`. `ECONNREFUSED 127.0.0.1:8000` lines from the web server before `API ready` are expected: the API is not up yet. If a step never completes, the last line before the gap names it. Database start-up failures print the PostgreSQL log, and each step stops after 10 minutes instead of hanging.
+
+**Health check.** Use `/login`. It is served by the web tier, which starts first. An API path such as `/api/v1/demo` only answers once the whole start-up has finished, and Render cancels a deploy whose health check hasn't passed within 15 minutes.
 
 **Start-up order.** Render waits for the service to bind `0.0.0.0` on `PORT` (default `10000`) and fails the deploy if no port opens in time. The entrypoint therefore starts the web server first, so the port opens within seconds. It then initialises PostgreSQL, applies migrations and seeds, and starts the API. During those first moments the sign-in page shows its form, but not yet the demo account list; reload once the API log line appears. The embedded worker waits `CTEM_WORKER_START_DELAY_SECONDS` (45 by default) before taking jobs, so the sample analysis and feed sync don't compete with start-up for the small CPU share.
 

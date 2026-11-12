@@ -11,7 +11,9 @@ services:
     # Measured peak under load is about 370 MB. Free instances sleep when idle, and waking one starts a
     # clean demo, which takes a minute or two on the free plan's CPU share.
     plan: free
-    healthCheckPath: /api/v1/demo
+    # The sign-in page is served by the web tier, which starts first; the API follows within minutes on
+    # the free plan's CPU share. Checking an API path here made slow cold starts fail the deploy.
+    healthCheckPath: /login
     envVars:
       - key: CTEM_DEMO_MODE
         value: "true"

@@ -17,7 +17,9 @@ API_PORT=${CTEM_API_PORT:-8000}
 export PORT=${PORT:-10000}
 export LANG=${LANG:-C.UTF-8} LC_ALL=${LC_ALL:-C.UTF-8}
 
-log() { printf '[demo] %s\n' "$*"; }
+log() { printf '[demo %s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
+# Bound each start-up step so a stall shows up in the log instead of a silent deploy timeout.
+LIMIT=""; command -v timeout >/dev/null 2>&1 && LIMIT="timeout 600"
 
 # Run as an unprivileged user when started as root (inside the image); as the current user otherwise.
 as_user() { local u=$1; shift; if [ "$(id -u)" = 0 ]; then gosu "$u" "$@"; else "$@"; fi; }
@@ -79,12 +81,14 @@ log "web server starting on 0.0.0.0:$PORT"
 if [ ! -s "$PGDATA/PG_VERSION" ]; then
   log "initialising database"
   mkdir -p "$PGDATA"; [ "$(id -u)" = 0 ] && chown postgres "$PGDATA"
-  as_user postgres "$PG_BIN/initdb" -D "$PGDATA" -U postgres --auth-local=trust --auth-host=scram-sha-256 --encoding=UTF8 >/dev/null
+  as_user postgres $LIMIT "$PG_BIN/initdb" -D "$PGDATA" -U postgres --auth-local=trust --auth-host=scram-sha-256 --encoding=UTF8 >/dev/null
 fi
 SOCKET_DIR=${CTEM_PG_SOCKET_DIR:-/var/run/postgresql}
 mkdir -p "$SOCKET_DIR"; [ "$(id -u)" = 0 ] && chown postgres "$SOCKET_DIR"
-as_user postgres "$PG_BIN/pg_ctl" -D "$PGDATA" -w -l "$PGDATA/server.log" start -o \
-  "-c listen_addresses=127.0.0.1 -p $PG_PORT -k $SOCKET_DIR -c max_connections=12 -c shared_buffers=16MB -c work_mem=2MB -c maintenance_work_mem=16MB -c wal_buffers=1MB -c jit=off -c max_worker_processes=2 -c max_parallel_workers=0 -c max_parallel_workers_per_gather=0 -c autovacuum_max_workers=1 -c wal_level=minimal -c max_wal_senders=0 -c fsync=off -c synchronous_commit=off -c full_page_writes=off" >/dev/null
+log "starting database"
+as_user postgres "$PG_BIN/pg_ctl" -D "$PGDATA" -w -t 300 -l "$PGDATA/server.log" start -o \
+  "-c listen_addresses=127.0.0.1 -p $PG_PORT -k $SOCKET_DIR -c max_connections=12 -c shared_buffers=16MB -c work_mem=2MB -c maintenance_work_mem=16MB -c wal_buffers=1MB -c jit=off -c max_worker_processes=2 -c max_parallel_workers=0 -c max_parallel_workers_per_gather=0 -c autovacuum_max_workers=1 -c wal_level=minimal -c max_wal_senders=0 -c fsync=off -c synchronous_commit=off -c full_page_writes=off" >/dev/null \
+  || { log "database failed to start:"; tail -40 "$PGDATA/server.log"; exit 1; }
 psql_admin() { as_user postgres "$PG_BIN/psql" -v ON_ERROR_STOP=1 -q -h "$SOCKET_DIR" -p "$PG_PORT" -U postgres "$@"; }
 # Two roles, as in production: the owner runs migrations; the app role is subject to row-level security.
 psql_admin -d postgres <<SQL
@@ -100,15 +104,22 @@ psql_admin -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = 'ctem'" |
 # --- Application ----------------------------------------------------------------------------------
 cd "$APP_DIR"
 log "applying migrations"
-as_user ctem "$PY" -m alembic upgrade head
+as_user ctem $LIMIT "$PY" -m alembic upgrade head
 if [ "$CTEM_DEMO_MODE" = true ]; then
   log "seeding demo accounts and sample data"
-  as_user ctem "$PY" -m app.cli seed-demo
+  as_user ctem $LIMIT "$PY" -m app.cli seed-demo
 fi
 
 spawn ctem "$PY" -m uvicorn app.main:app --host 127.0.0.1 --port "$API_PORT" --no-proxy-headers --no-access-log
 [ "$CTEM_EMBEDDED_WORKER" = true ] || spawn ctem "$PY" -m app.workers.runner
-log "API starting; demo at $CTEM_PUBLIC_BASE_URL"
+log "API starting"
+# Report when the API answers, so the log shows how long a cold start took.
+( for _ in $(seq 1 300); do
+    if "$PY" -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:$API_PORT/healthz', timeout=2)" 2>/dev/null; then
+      log "API ready; demo at $CTEM_PUBLIC_BASE_URL"; exit 0
+    fi
+    sleep 2
+  done; log "API did not answer within 10 minutes" ) &
 
 # If any process exits, stop the rest so the platform restarts the container.
 while :; do
