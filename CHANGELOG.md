@@ -15,6 +15,7 @@ All notable changes are recorded here. The format follows Keep a Changelog; vers
 - Search, filters, sorting and page of the main tables are kept in the address bar, so views can be bookmarked and deep links such as `/findings?source=import:trivy` work.
 
 ### Changed
+- Demo start-up binds the web port before database setup (Render fails deploys whose port doesn't open in time); `CTEM_WORKER_START_DELAY_SECONDS` delays the embedded worker. Tests never call live threat-intel feeds; CI Semgrep uses `p/default`.
 - Lower memory use: `CTEM_EMBEDDED_WORKER` runs the job worker inside the API process; the Anthropic SDK and boto3 load on first use; the MITRE ATT&CK bundle is decoded one object at a time instead of all at once; `CTEM_DB_MAX_OVERFLOW` sets the connection pool overflow; finished jobs log the process's peak memory.
 - Scanner uploads are no longer listed as assessments.
 - AI posture findings are resolved when the recorded configuration no longer meets the rule; re-observed findings take the latest title and description.

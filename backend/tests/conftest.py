@@ -50,6 +50,19 @@ def _database():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _no_live_feeds(monkeypatch):
+    """Threat-intel and OSV requests never reach the internet from tests. The scheduler (run directly,
+    or by the embedded worker) would otherwise sync the live CISA and FIRST feeds whenever the last
+    sync is stale, which on a fresh test database is always. Tests that need feed data install their
+    own mock transport, which replaces this one."""
+    import httpx
+
+    from app.integrations.intel import sources
+
+    monkeypatch.setattr(sources, "TRANSPORT", httpx.MockTransport(lambda request: httpx.Response(503, text="offline in tests")))
+
+
 @pytest.fixture(scope="session")
 def app(_database):
     from app.main import create_app

@@ -132,8 +132,9 @@ def _write_sample_repo(root: Path) -> None:
         "crm": {"url": "http://crm-mcp.sample.invalid/mcp", "env": {"CRM_API_TOKEN": "tok_live_" + "0a1b2c3d4e" * 2}},
         "pinned": {"command": "npx", "args": ["-y", "@sample/mcp-server@1.4.2"], "env": {"API_KEY": "${SAMPLE_KEY}"}},
     }}, indent=2))
-    (root / "models" / "classifier.pkl").write_bytes(pickle.dumps(_Unsafe()))
-    (root / "models" / "scaler.pkl").write_bytes(pickle.dumps({"mean": [0.1, 0.2], "scale": [1.0, 2.0]}))
+    # Writing sample model files for the scanner to find; nothing in the platform ever unpickles them.
+    (root / "models" / "classifier.pkl").write_bytes(pickle.dumps(_Unsafe()))  # nosemgrep: python.lang.security.deserialization.pickle.avoid-pickle
+    (root / "models" / "scaler.pkl").write_bytes(pickle.dumps({"mean": [0.1, 0.2], "scale": [1.0, 2.0]}))  # nosemgrep: python.lang.security.deserialization.pickle.avoid-pickle
 
 
 def seed() -> dict:

@@ -81,6 +81,7 @@ class Settings(BaseSettings):
     # Workers
     worker_concurrency: int = 4
     embedded_worker: bool = False  # run the job worker inside the API process (single-container deployments)
+    worker_start_delay_seconds: float = 0  # wait before claiming jobs, so a cold start serves requests first
     worker_poll_seconds: float = 2.0
     job_max_attempts: int = 3
     job_stale_after_seconds: int = 300

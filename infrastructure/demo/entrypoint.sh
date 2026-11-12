@@ -54,8 +54,26 @@ APP_DB_PASSWORD=$(random 24)
 OWNER_DB_PASSWORD=$(random 24)
 export CTEM_DATABASE_URL="postgresql+psycopg://ctem_app:$APP_DB_PASSWORD@127.0.0.1:$PG_PORT/ctem"
 export CTEM_MIGRATION_DATABASE_URL="postgresql+psycopg://ctem_owner:$OWNER_DB_PASSWORD@127.0.0.1:$PG_PORT/ctem"
+export CTEM_WORKER_START_DELAY_SECONDS=${CTEM_WORKER_START_DELAY_SECONDS:-45}  # let the web tier and API come up first
 mkdir -p "$CTEM_STORAGE_LOCAL_PATH" "$CTEM_REPO_SCAN_ROOT"
 [ "$(id -u)" = 0 ] && chown -R ctem "$VAR_DIR"
+
+shutdown() {
+  log "stopping"
+  kill "${pids[@]}" 2>/dev/null || true
+  wait "${pids[@]}" 2>/dev/null || true
+  as_user postgres "$PG_BIN/pg_ctl" -D "$PGDATA" -m fast stop >/dev/null 2>&1 || true
+}
+trap 'shutdown; exit 0' TERM INT
+
+# --- Web tier first ------------------------------------------------------------------------------
+# Hosting platforms wait for the public port to open, and a small CPU share makes database setup and
+# migrations slow. The web server binds within seconds; until the API is ready it answers API calls
+# with an error and the sign-in page shows its form without the demo account list.
+cd "$WEB_DIR"
+spawn ctem env HOSTNAME=0.0.0.0 PORT="$PORT" CTEM_UPSTREAM_PROXY="$CTEM_UPSTREAM_PROXY" "$(command -v node)" server.js
+cd - >/dev/null
+log "web server starting on 0.0.0.0:$PORT"
 
 # --- PostgreSQL ---------------------------------------------------------------------------------
 if [ ! -s "$PGDATA/PG_VERSION" ]; then
@@ -88,19 +106,9 @@ if [ "$CTEM_DEMO_MODE" = true ]; then
   as_user ctem "$PY" -m app.cli seed-demo
 fi
 
-shutdown() {
-  log "stopping"
-  kill "${pids[@]}" 2>/dev/null || true
-  wait "${pids[@]}" 2>/dev/null || true
-  as_user postgres "$PG_BIN/pg_ctl" -D "$PGDATA" -m fast stop >/dev/null || true
-}
-trap 'shutdown; exit 0' TERM INT
-
 spawn ctem "$PY" -m uvicorn app.main:app --host 127.0.0.1 --port "$API_PORT" --no-proxy-headers --no-access-log
 [ "$CTEM_EMBEDDED_WORKER" = true ] || spawn ctem "$PY" -m app.workers.runner
-cd "$WEB_DIR"
-spawn ctem env HOSTNAME=0.0.0.0 PORT="$PORT" CTEM_UPSTREAM_PROXY="$CTEM_UPSTREAM_PROXY" "$(command -v node)" server.js
-log "starting on port $PORT ($CTEM_PUBLIC_BASE_URL)"
+log "API starting; demo at $CTEM_PUBLIC_BASE_URL"
 
 # If any process exits, stop the rest so the platform restarts the container.
 while :; do

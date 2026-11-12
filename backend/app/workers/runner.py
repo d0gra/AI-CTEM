@@ -128,6 +128,8 @@ def start_embedded() -> tuple[threading.Event, threading.Thread]:
 
 def run(stop: threading.Event) -> None:
     settings = get_settings()
+    if settings.worker_start_delay_seconds and stop.wait(settings.worker_start_delay_seconds):
+        return  # stopped during the start delay
     worker_id = f"{socket.gethostname()}:{os.getpid()}"
     log.info("worker_started", worker_id=worker_id, concurrency=settings.worker_concurrency, job_types=queue.registered_job_types(),
              embedded=threading.current_thread() is not threading.main_thread())

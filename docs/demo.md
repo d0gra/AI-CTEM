@@ -38,7 +38,11 @@ With `CTEM_DEMO_SAMPLE_DATA=true` (the default), the seed writes a small, delibe
 
 Render routes to the port in `PORT` (10000 by default). `CTEM_PUBLIC_BASE_URL` defaults to Render's `RENDER_EXTERNAL_URL`, so links in the app use the public address.
 
-Free instances sleep after about 15 minutes without traffic. The next visit wakes the instance, which starts a clean demo, so the first page load after a pause is slow. That reset is useful for a public demo, but anything visitors create is lost.
+Render's free web services have 0.1 CPU and 512 MB of memory, and their filesystem is ephemeral. Render spins them down after 15 minutes without inbound traffic and may restart them at any time; waking takes about a minute. Each workspace gets 750 free instance hours a month, and a spun-down service uses none.
+
+Every wake therefore starts a clean demo. That reset is useful for a public demo, but anything visitors create is lost.
+
+**Start-up order.** Render waits for the service to bind `0.0.0.0` on `PORT` (default `10000`) and fails the deploy if no port opens in time. The entrypoint therefore starts the web server first, so the port opens within seconds. It then initialises PostgreSQL, applies migrations and seeds, and starts the API. During those first moments the sign-in page shows its form, but not yet the demo account list; reload once the API log line appears. The embedded worker waits `CTEM_WORKER_START_DELAY_SECONDS` (45 by default) before taking jobs, so the sample analysis and feed sync don't compete with start-up for the small CPU share.
 
 ## Memory
 
