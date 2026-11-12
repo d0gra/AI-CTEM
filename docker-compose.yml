@@ -88,6 +88,8 @@ services:
       context: ./frontend
       args: { CTEM_BACKEND_URL: "http://api:8000" }
     ports: ["${CTEM_WEB_PORT:-3000}:3000"]
+    environment:
+      CTEM_UPSTREAM_PROXY: ${CTEM_UPSTREAM_PROXY:-false}
     depends_on: [api]
     read_only: true
     tmpfs: [/tmp, /app/.next/cache]

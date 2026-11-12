@@ -28,6 +28,13 @@ Put a TLS-terminating reverse proxy in front of port 3000 and keep `CTEM_COOKIE_
 
 The manifests run as non-root with a read-only root filesystem, dropped capabilities and the `restricted` Pod Security level. They are reference manifests and have not been applied to a cluster.
 
+## Client addresses
+
+Rate limits and the audit log use the client's address. The API reads it from `X-Forwarded-For` only when the request arrives from an address in `CTEM_TRUSTED_PROXIES` (the web tier), walking the header from the right and skipping trusted hops.
+
+- **Behind a load balancer, ingress or nginx (recommended, and required for TLS):** make it append the client address (`proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` in nginx; ALB and most ingress controllers do this by default), set `CTEM_UPSTREAM_PROXY=true` on the web tier, and add any further proxy hops between that proxy and the web tier to `CTEM_TRUSTED_PROXIES`.
+- **Web server exposed directly:** leave `CTEM_UPSTREAM_PROXY=false`. The web server then strips client-supplied `X-Forwarded-For`, so clients cannot choose their address. Every request then appears to come from the web server, which means rate limits are shared by all users; per-account lockout still applies.
+
 ## Scaling
 
 - **API** is stateless; scale horizontally. Redis is required with more than one replica so rate limits are shared.

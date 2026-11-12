@@ -164,6 +164,7 @@ All settings are environment variables with the `CTEM_` prefix; the complete lis
 | `CTEM_REPO_SCAN_ROOT` | Directory on workers under which repositories may be analysed. Empty disables path targets. |
 | `CTEM_ALLOW_REGISTRATION` | Self-service organization registration. Disable after onboarding. |
 | `CTEM_TRUSTED_PROXIES` | CIDRs of reverse proxies whose `X-Forwarded-For` is trusted for the client address (rate limits, audit log). |
+| `CTEM_UPSTREAM_PROXY` | Web tier: `true` only when a proxy in front appends the real client address. Otherwise the header is stripped. See [deployment](docs/deployment.md#client-addresses). |
 | `CTEM_ALLOW_SERVER_CLAUDE_CREDENTIALS` | Lets organizations use the server's own Claude credentials for AI analysis. Default `false`. |
 | `CTEM_BACKEND_URL` | Frontend build-time setting: the API origin the Next.js server proxies to. |
 

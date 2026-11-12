@@ -121,6 +121,7 @@ spec:
         - name: web
           image: registry.example.com/ctem/web:0.1.0   # built with CTEM_BACKEND_URL=http://api:8000
           ports: [{ containerPort: 3000 }]
+          env: [{ name: CTEM_UPSTREAM_PROXY, value: "true" }]   # the Ingress controller appends the client address
           readinessProbe: { httpGet: { path: /login, port: 3000 }, periodSeconds: 10 }
           resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 512Mi } }
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
