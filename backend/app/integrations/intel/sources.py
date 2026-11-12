@@ -5,7 +5,9 @@ is synthesised: if a source is unreachable the sync fails and the failure is rec
 `intel_sync_state`.
 """
 
-from collections.abc import Iterable
+import codecs
+import json
+from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime
 
 import httpx
@@ -270,11 +272,47 @@ def sync_atlas(db: Session) -> dict:
     return {"source": "mitre_atlas", "records": len(rows), "version": doc.get("version")}
 
 
+def iter_array_items(data: bytes, key: str, chunk: int = 1 << 20) -> Iterator[dict]:
+    """Yield the elements of the top-level JSON array `key` one at a time.
+
+    Decoding a whole STIX bundle (ATT&CK is ~45 MB, mostly relationships we discard) builds several
+    hundred MB of Python objects; this decodes about one chunk at a time instead."""
+    decoder, utf8 = json.JSONDecoder(), codecs.getincrementaldecoder("utf-8")()
+    offset = data.index(b"[", data.index(json.dumps(key).encode())) + 1
+    buf = ""
+
+    def more() -> bool:
+        nonlocal offset, buf
+        if offset >= len(data):
+            return False
+        buf += utf8.decode(data[offset:offset + chunk], final=offset + chunk >= len(data))
+        offset += chunk
+        return True
+
+    while True:
+        buf = buf.lstrip(" \t\r\n,")
+        while not buf:
+            if not more():
+                return
+            buf = buf.lstrip(" \t\r\n,")
+        if buf[0] == "]":
+            return
+        while True:
+            try:
+                item, end = decoder.raw_decode(buf)
+                break
+            except json.JSONDecodeError:
+                if not more():
+                    raise
+        yield item
+        buf = buf[end:]
+
+
 def sync_attack(db: Session) -> dict:
-    doc = _api(ATTACK_URL, timeout=120).request("GET", ATTACK_URL, max_bytes=120 * 1024 * 1024).json()
+    body = _api(ATTACK_URL, timeout=120).request("GET", ATTACK_URL, max_bytes=120 * 1024 * 1024).body
     rows = []
     kinds = {"attack-pattern": "technique", "x-mitre-tactic": "tactic", "course-of-action": "mitigation"}
-    for obj in doc.get("objects") or []:
+    for obj in iter_array_items(body, "objects"):
         kind = kinds.get(obj.get("type"))
         if not kind or obj.get("revoked") or obj.get("x_mitre_deprecated"):
             continue

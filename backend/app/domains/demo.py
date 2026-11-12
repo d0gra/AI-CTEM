@@ -205,7 +205,8 @@ def _seed_sample_data(org_id: uuid.UUID) -> None:
         db.add(AssessmentTarget(organization_id=org_id, assessment_id=assessment.id, kind="path", value=str(root)))
         db.flush()
         start_run(db, assessment, None)
-        # Public threat intelligence, so vulnerabilities show KEV, EPSS, ATT&CK and ATLAS context.
-        enqueue(db, organization_id=org_id, job_type="intel.sync", config={"sources": ["cisa_kev", "epss", "mitre_atlas", "mitre_attack"]},
-                idempotency_key="intel.sync:demo-seed")
+        # Public threat intelligence, so vulnerabilities show KEV and EPSS context and AI findings link to ATLAS.
+        feeds = [s.strip() for s in settings.demo_intel_sources.split(",") if s.strip()]
+        if feeds:
+            enqueue(db, organization_id=org_id, job_type="intel.sync", config={"sources": feeds}, idempotency_key="intel.sync:demo-seed")
 

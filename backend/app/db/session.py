@@ -27,7 +27,7 @@ def get_engine() -> Engine:
     global _engine, _factory
     if _engine is None:
         s = get_settings()
-        _engine = create_engine(s.database_url, pool_size=s.db_pool_size, max_overflow=10, pool_pre_ping=True)
+        _engine = create_engine(s.database_url, pool_size=s.db_pool_size, max_overflow=s.db_max_overflow, pool_pre_ping=True)
         _factory = sessionmaker(_engine, expire_on_commit=False, autoflush=False)
     return _engine
 

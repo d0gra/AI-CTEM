@@ -1,6 +1,6 @@
 # Public demo image
 
-`Dockerfile.demo` builds a single container for showing the platform on a host that runs one service, such as Render. It contains PostgreSQL, the API, a worker and the web server. It is **not a production deployment**: data lives inside the container and is lost on every restart or redeploy, and the sign-in details are published. For real use, see [deployment.md](deployment.md).
+`Dockerfile.demo` builds a single container for showing the platform on a host that runs one service, such as Render's free plan (512 MB). It contains PostgreSQL, the API with the job worker running on a thread of the same process, and the web server. It is **not a production deployment**: data lives inside the container and is lost on every restart or redeploy, and the sign-in details are published. For real use, see [deployment.md](deployment.md).
 
 ## What a visitor gets
 
@@ -18,7 +18,7 @@ The sign-in page lists one account per built-in role, each with a **Sign in** bu
 | Auditor | `auditor@demo.example.com` |
 | Read-only User | `viewer@demo.example.com` |
 
-With `CTEM_DEMO_SAMPLE_DATA=true` (the default), the seed writes a small, deliberately insecure AI support bot into the container and runs the platform's real repository analysis on it, then the AI posture review. All values in it are synthetic: an old pinned dependency set, a provider key in the provider's format, a broad MCP filesystem server and a model file that references a code-execution callable. This gives about 90 findings and 17 assets across AI security, supply chain and secrets, produced by the engines. Vulnerability context comes from the public feeds the worker synchronises at start (CISA KEV, FIRST EPSS, MITRE ATT&CK, MITRE ATLAS), and dependency advisories come from the live OSV API. The container therefore needs outbound internet access.
+With `CTEM_DEMO_SAMPLE_DATA=true` (the default), the seed writes a small, deliberately insecure AI support bot into the container and runs the platform's real repository analysis on it, then the AI posture review. All values in it are synthetic: an old pinned dependency set, a provider key in the provider's format, a broad MCP filesystem server and a model file that references a code-execution callable. This gives about 90 findings and 17 assets across AI security, supply chain and secrets, produced by the engines. Vulnerability context comes from the public feeds the worker synchronises at start (CISA KEV, FIRST EPSS and MITRE ATLAS by default; add MITRE ATT&CK with `CTEM_DEMO_INTEL_SOURCES`), and dependency advisories come from the live OSV API. The container therefore needs outbound internet access.
 
 ## What demo mode restricts
 
@@ -34,12 +34,31 @@ With `CTEM_DEMO_SAMPLE_DATA=true` (the default), the seed writes a small, delibe
 
 1. Push the repository to GitHub or GitLab.
 2. In Render, choose **New → Blueprint**, select the repository and apply `render.yaml`. Or choose **New → Web Service → Existing image / Docker**, set the Dockerfile path to `Dockerfile.demo` and the context to the repository root, and add `CTEM_DEMO_MODE=true`.
-3. Use an instance with at least 1 GB of memory. The demo uses about 430 MB at rest, so 512 MB instances (Free, Starter) run out of memory under load. The blueprint uses Standard (2 GB).
-4. Open the service URL. The first start takes about a minute: database setup, migrations, seed, then the sample analysis in the background.
+3. The blueprint uses the Free plan. Open the service URL once the deploy finishes. Startup (database setup, migrations, seed) takes a minute or two on the free plan's CPU share; the sample analysis and feed sync then run in the background for a few more minutes.
 
 Render routes to the port in `PORT` (10000 by default). `CTEM_PUBLIC_BASE_URL` defaults to Render's `RENDER_EXTERNAL_URL`, so links in the app use the public address.
 
-Free instances also sleep when idle, and a restart resets the demo. That reset is useful for a public demo, but anything visitors create is lost.
+Free instances sleep after about 15 minutes without traffic. The next visit wakes the instance, which starts a clean demo, so the first page load after a pause is slow. That reset is useful for a public demo, but anything visitors create is lost.
+
+## Memory
+
+Measured on the final configuration, with the sample analysis, the feed sync and a load of page requests and PDF, XLSX, CSV and JSON reports:
+
+| | Peak |
+| --- | --- |
+| Whole container (resident memory, counting PostgreSQL's shared buffers once per process) | about 370 MB |
+| API process including the worker | about 190 MB |
+| Web server | about 65 MB |
+
+What keeps it under 512 MB:
+- The worker runs on a thread of the API process (`CTEM_EMBEDDED_WORKER=true`) instead of a second Python process.
+- One job runs at a time, and the database pool is small (4 plus 3 overflow).
+- PostgreSQL runs with 16 MB of shared buffers, 12 connections, no parallel workers and no JIT.
+- glibc keeps at most two malloc arenas (`MALLOC_ARENA_MAX=2`), and the Node heap is capped at 96 MB.
+- The Anthropic SDK and boto3 load only when Claude or AWS is used.
+- The ATT&CK bundle is decoded one object at a time.
+
+Each finished job logs `process_peak_rss_mb`, which shows how close a deployment runs to its limit.
 
 ## Run locally
 
@@ -57,6 +76,8 @@ Then open http://localhost:10000.
 | `CTEM_DEMO_MODE` | `true` in the image | Seeds the accounts and applies the restrictions above |
 | `CTEM_DEMO_PASSWORD` | `Demo-CTEM-2026!` | Password for every demo account |
 | `CTEM_DEMO_SAMPLE_DATA` | `true` | Analyse the generated sample repository on first start |
+| `CTEM_DEMO_INTEL_SOURCES` | `cisa_kev,epss,mitre_atlas` | Feeds synchronised at start; add `mitre_attack` for ATT&CK |
+| `CTEM_EMBEDDED_WORKER` | `true` in the image | Run the worker inside the API process |
 | `PORT` | `10000` | Port the web server listens on |
 | `CTEM_PUBLIC_BASE_URL` | `RENDER_EXTERNAL_URL`, else `http://localhost:$PORT` | Address used in links |
 | `CTEM_SECRET_KEY`, `CTEM_ENCRYPTION_KEYS` | generated at start | Set them to keep sessions valid across restarts |

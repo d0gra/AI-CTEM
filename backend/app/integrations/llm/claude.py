@@ -12,14 +12,18 @@ claude.ai plans (Pro, Max, Team, Enterprise seats) do not include API access, so
 used here; this is stated in the UI.
 """
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from typing import Literal
 
-import anthropic
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
+from app.core.lazy import lazy_import
 from app.integrations.base import ApiError, ConnectionResult, ConnectorSpec, classify_status, register_connector
+
+anthropic = lazy_import("anthropic")  # loaded on first use
 
 DEFAULT_MODEL = "claude-opus-5-5"
 

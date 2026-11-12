@@ -51,7 +51,16 @@ def _error(status: int, code: str, message: str, details: dict | None = None) ->
 async def lifespan(_app: FastAPI):
     configure_logging()
     get_engine()
+    worker = None
+    if get_settings().embedded_worker:
+        from app.workers.runner import start_embedded
+
+        worker = start_embedded()
     yield
+    if worker:
+        stop, thread = worker
+        stop.set()
+        thread.join(timeout=30)
     dispose_engine()
 
 

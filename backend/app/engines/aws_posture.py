@@ -8,14 +8,14 @@ Required permissions: the AWS managed policies `SecurityAudit` and `ViewOnlyAcce
 sufficient. No write API is called.
 """
 
+from __future__ import annotations
+
 import json
 from datetime import UTC, datetime
 
-import boto3
-from botocore.config import Config as BotoConfig
-from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import BaseModel, Field
 
+from app.core.lazy import lazy_import
 from app.core.security import decrypt_secret
 from app.domains.assessments.service import EngineContext, EngineSpec, register
 from app.domains.assets.service import AssetSpec
@@ -23,6 +23,9 @@ from app.domains.findings.service import EvidenceInput, FindingInput
 from app.integrations.base import ConnectionResult, ConnectorSpec, register_connector
 from app.models import Asset
 from app.workers.queue import PermanentJobError
+
+boto3 = lazy_import("boto3")  # loaded on first use
+botocore_exc = lazy_import("botocore.exceptions")
 
 SENSITIVE_PORTS = {22: "SSH", 3389: "RDP", 3306: "MySQL", 5432: "PostgreSQL", 1433: "MSSQL", 27017: "MongoDB",
                    6379: "Redis", 9200: "Elasticsearch", 23: "Telnet", 445: "SMB", 2375: "Docker API", 11434: "Ollama"}
@@ -64,18 +67,19 @@ def make_session(config: AwsConfig, creds: AwsCredentials) -> boto3.Session:
 
 def test_connection(config: AwsConfig, creds: AwsCredentials) -> ConnectionResult:
     try:
-        identity = make_session(config, creds).client("sts", config=_BOTO).get_caller_identity()
+        identity = make_session(config, creds).client("sts", config=_boto_config()).get_caller_identity()
         return ConnectionResult(True, f"Authenticated as {identity['Arn']}", metadata={"account": identity["Account"]})
-    except ClientError as exc:
+    except botocore_exc.ClientError as exc:
         code = exc.response.get("Error", {}).get("Code", "")
         klass = "auth" if code in ("InvalidClientTokenId", "SignatureDoesNotMatch", "ExpiredToken") else (
             "permission" if "AccessDenied" in code else "unknown")
         return ConnectionResult(False, f"{code}: {exc.response.get('Error', {}).get('Message', '')}"[:400], klass)
-    except (BotoCoreError, ValueError) as exc:
+    except (botocore_exc.BotoCoreError, ValueError) as exc:
         return ConnectionResult(False, str(exc)[:400], "config" if isinstance(exc, ValueError) else "network")
 
 
-_BOTO = BotoConfig(retries={"max_attempts": 5, "mode": "adaptive"}, connect_timeout=10, read_timeout=30)
+def _boto_config():
+    return lazy_import("botocore.config").Config(retries={"max_attempts": 5, "mode": "adaptive"}, connect_timeout=10, read_timeout=30)
 
 
 class _Aws:
@@ -86,7 +90,7 @@ class _Aws:
         self.privileged_roles: set[str] = set()
 
     def client(self, service: str, region: str | None = None):
-        return self.session.client(service, region_name=region, config=_BOTO)
+        return self.session.client(service, region_name=region, config=_boto_config())
 
     def finding(self, asset: Asset, rule: str, title: str, severity: str, description: str, remediation: str,
                 evidence: dict, *, domain: str = "cloud", discriminator: str = "", impact: str = "") -> None:
@@ -98,10 +102,10 @@ class _Aws:
     def guarded(self, label: str, fn) -> None:
         try:
             fn()
-        except ClientError as exc:
+        except botocore_exc.ClientError as exc:
             code = exc.response.get("Error", {}).get("Code", "ClientError")
             self.ctx.skip(label, f"{code}: {exc.response.get('Error', {}).get('Message', '')}"[:300])
-        except BotoCoreError as exc:
+        except botocore_exc.BotoCoreError as exc:
             self.ctx.skip(label, str(exc)[:300])
 
     # --- IAM ---
@@ -122,7 +126,7 @@ class _Aws:
                 self.finding(account, "iam.password_policy_weak", "IAM password policy allows passwords shorter than 14 characters", "low",
                              "The account password policy does not meet the CIS benchmark minimum length.",
                              "Require a minimum length of 14 characters.", {"PasswordPolicy": policy}, domain="identity")
-        except ClientError as exc:
+        except botocore_exc.ClientError as exc:
             if exc.response["Error"]["Code"] != "NoSuchEntity":
                 raise
             self.finding(account, "iam.password_policy_missing", "No IAM password policy is configured", "medium",
@@ -142,7 +146,7 @@ class _Aws:
                 has_console = True
                 try:
                     iam.get_login_profile(UserName=name)
-                except ClientError as exc:
+                except botocore_exc.ClientError as exc:
                     if exc.response["Error"]["Code"] != "NoSuchEntity":
                         raise
                     has_console = False
@@ -206,7 +210,7 @@ class _Aws:
             name = bucket["Name"]
             try:
                 block = s3.get_public_access_block(Bucket=name)["PublicAccessBlockConfiguration"]
-            except ClientError as exc:
+            except botocore_exc.ClientError as exc:
                 if exc.response["Error"]["Code"] != "NoSuchPublicAccessBlockConfiguration":
                     raise
                 block = {}
@@ -214,7 +218,7 @@ class _Aws:
             public_policy = False
             try:
                 public_policy = s3.get_bucket_policy_status(Bucket=name)["PolicyStatus"]["IsPublic"]
-            except ClientError as exc:
+            except botocore_exc.ClientError as exc:
                 if exc.response["Error"]["Code"] not in ("NoSuchBucketPolicy", "NoSuchBucket"):
                     raise
             grants = s3.get_bucket_acl(Bucket=name).get("Grants", [])
@@ -378,8 +382,8 @@ def run(ctx: EngineContext) -> None:
                                           if ctx.integration.credentials_encrypted else {})
     try:
         session = make_session(config, creds)
-        identity = session.client("sts", config=_BOTO).get_caller_identity()
-    except (ClientError, BotoCoreError, ValueError) as exc:
+        identity = session.client("sts", config=_boto_config()).get_caller_identity()
+    except (botocore_exc.ClientError, botocore_exc.BotoCoreError, ValueError) as exc:
         raise PermanentJobError(f"AWS authentication failed: {exc}"[:500]) from exc
     account_id = identity["Account"]
     account = ctx.asset(AssetSpec(type="cloud_account", identifier=f"arn:aws:iam::{account_id}:root", name=f"AWS account {account_id}",

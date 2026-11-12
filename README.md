@@ -1,368 +1,336 @@
+<div align="center">
+
 # CTEM Platform
 
-A multi-tenant Continuous Threat Exposure Management platform that discovers assets, assesses them, scores findings by contextual risk, derives attack paths from evidence-backed relationships, and tracks remediation through verified retest. AI systems (model endpoints, agents, MCP servers, RAG stores, model artifacts) are inventoried and assessed in the same data model as conventional infrastructure.
+**Continuous Threat Exposure Management for conventional and AI infrastructure**
 
-Version `0.2.0`. What has and has not been verified against real systems is listed under [Available integrations](#available-integrations) and [Known limitations](#known-limitations).
+Discover what you own, assess it inside an authorized scope, rank findings by real-world risk, trace attack paths, and close the loop with verified remediation, for cloud, web, code and AI systems in one data model.
 
-## Product overview
+[![CI](https://github.com/d0gra/ctem-ai-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/d0gra/ctem-ai-platform/actions/workflows/ci.yml)
+![Version](https://img.shields.io/badge/version-0.3.0-informational)
+![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+![Python](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)
 
-The platform follows the exposure-management lifecycle:
+[Overview](#overview) · [Capabilities](#capabilities) · [AI security](#ai-security) · [Architecture](#architecture) · [Security model](#security-model) · [Deploy](#deployment-options) · [Integrations](#integrations) · [Docs](#documentation)
 
+</div>
+
+---
+
+## Overview
+
+Security teams rarely lack scanners. They lack one place where every scanner's output, every asset and every business context meet, and where "fixed" means verified rather than asserted. CTEM Platform is that system of record, built around the exposure-management lifecycle:
+
+```text
+SCOPE ─► DISCOVER ─► INVENTORY ─► ASSESS ─► PRIORITIZE ─► ATTACK PATHS ─► REMEDIATE ─► RETEST
+  ▲                                                                                  │
+  └──────────────────────────── schedules, CI/CD uploads, posture changes ──────────┘
 ```
-DISCOVER → INVENTORY → ASSESS → VALIDATE → PRIORITIZE → REMEDIATE → MONITOR
-```
 
-- **Discover / inventory.** Engines and connectors write to one asset inventory keyed by a type-qualified canonical identifier. Relationships between assets form the asset graph.
-- **Assess.** Assessment engines and imported scanner reports produce normalised findings with stored evidence.
-- **Validate.** Findings carry a confidence level (`confirmed`, `firm`, `tentative`). A finding is marked remediated only by a retest that no longer observes it or a recorded manual verification.
-- **Prioritize.** A risk engine combines severity, exploitation intelligence, exposure, asset context, attack-path position and AI-specific factors, and stores the full breakdown.
-- **Remediate / monitor.** Ownership, SLAs, tasks, tickets, risk acceptance with separation of duties, policies, notifications and scheduled re-assessment.
-
-## Core capabilities
-
-| Area | What is implemented |
+| Principle | What it means in practice |
 | --- | --- |
-| Asset inventory | 33 asset types, de-duplication by canonical identifier, relationships (15 types), discovery provenance and change history, ownership, classification, server-side search/filter/sort |
-| Authorized scope | Every engine refuses targets not covered by a recorded authorization; active techniques and private networks need separate flags |
-| Attack surface | DNS and certificate-transparency discovery, SPF/DMARC/CAA and dangling-CNAME checks, HTTP header/cookie/CORS analysis, TLS inspection, exposed files and management consoles, Nmap service discovery |
-| Vulnerabilities | Catalogue with CVSS, EPSS and CISA KEV; scanner import (10 formats); SBOM (CycloneDX, SPDX) and lockfile analysis against OSV; Nuclei execution |
-| Web & API | OpenAPI/Swagger analysis with optional read-only probes for unenforced authentication; Semgrep, ZAP and SARIF import |
-| Cloud | AWS read-only posture (IAM, S3, EC2, RDS, CloudTrail, KMS, EKS) with identity and permission relationships; Azure/GCP through Prowler import |
-| AI security | AI asset discovery in repositories, shadow-AI detection against an approved-provider list, MCP configuration review and live probe, inference endpoint probe, model artifact inspection, agent/RAG posture rules |
-| AI red team | 15 deterministic tests under an enforced authorization, scope, budget and rate-limit envelope |
-| Threat intelligence | CISA KEV, EPSS, NVD, OSV, MITRE ATT&CK and ATLAS, with source attribution |
-| Attack paths | Evidence-graded paths (verified / probable / theoretical) from exposed entry points to critical assets, with graph view |
-| Risk | Transparent scoring, configurable policy, risk acceptance with approval and expiry |
-| Remediation | Tasks, SLAs, retest, manual verification, GitHub/GitLab/Jira ticket creation |
-| Governance | Rule-based policies with exceptions and evaluation history; 13 default policies |
-| Reporting | 10 report types in PDF, XLSX, CSV and JSON |
-| Platform | Multi-tenancy with PostgreSQL row-level security, RBAC (9 built-in roles), TOTP MFA, hash-chained audit log, durable job queue, notifications with storm control |
+| **Authorized by construction** | No engine touches a target that isn't covered by a recorded authorization. Active techniques and private networks need their own explicit flags, checked again at run time. |
+| **Evidence over assertion** | Findings carry stored evidence and a confidence level. A finding is closed only by a retest that no longer observes it, or by a recorded manual verification. |
+| **Transparent risk** | Every risk score stores its full breakdown (likelihood, impact, escalators, floors), so a ranking can always be explained. |
+| **AI is infrastructure** | Model endpoints, agents, MCP servers, RAG systems, vector stores and model files are inventoried, assessed and attack-pathed like any other asset. |
+| **Tenant isolation in the database** | Multi-tenancy is enforced by PostgreSQL row-level security under a role that cannot bypass it, not only by application code. |
+| **Honest coverage** | Integrations state what they were verified against; limitations are documented, not hidden. |
 
-## Architecture overview
+### At a glance
 
-A modular monolith (FastAPI) with separate worker processes. The browser talks only to the Next.js server, which proxies `/api/*` to the API. Assessment execution happens only in workers. PostgreSQL is the system of record and also the job queue.
+| | |
+| --- | --- |
+| **Assessment engines** | 17 (discovery, web and API, network, code and dependencies, cloud, AI) |
+| **Connectors** | 26 (11 scanners, 6 threat-intel feeds, 3 ticketing systems, 3 notification channels, 2 AI, 1 cloud) |
+| **Scanner report formats** | 11, uploaded by hand or from CI/CD pipelines with a build gate |
+| **Asset model** | 33 asset types (11 AI-specific) and 15 relationship types |
+| **Access control** | 9 built-in roles, 33 permissions, custom roles, TOTP MFA |
+| **Governance** | 13 default policies with exceptions; 10 report types in PDF, XLSX, CSV and JSON |
+| **API** | 121 REST paths (152 operations) with OpenAPI documentation |
+| **Quality gates** | 113 backend tests against real PostgreSQL, 26 frontend tests, lint, type checks, SAST and dependency audit in CI |
+
+---
+
+## Capabilities
+
+| Stage | Capability |
+| --- | --- |
+| **Scope** | Authorized targets by domain, CIDR, URL or local path, with expiry, recorded authorization notes, and separate flags for active testing and private networks. |
+| **Discover** | DNS and certificate-transparency enumeration; HTTP exposure (headers, cookies, CORS, TLS, exposed files and consoles); Nmap service discovery; OpenAPI analysis; AWS read-only inventory with IAM relationships; repository analysis for dependencies, secrets and AI usage. |
+| **Inventory** | One record per asset (type + canonical identifier), merged across sources, with change history, ownership, classification, labels, stale-asset detection and an asset graph. |
+| **Assess** | Nuclei, Trivy, Grype, Semgrep, Gitleaks and Checkov run on workers; ZAP, Prowler, SARIF, CycloneDX and SPDX reports are uploaded by hand or from **CI/CD pipelines** using upload-only tokens and an optional severity gate that fails the build. |
+| **Prioritize** | Risk = likelihood (severity, EPSS, CISA KEV, exposure, confidence) × impact (criticality, data sensitivity), plus contextual escalators and KEV floors, with configurable policy, SLAs and risk acceptance that needs a second approver. |
+| **Attack paths** | Shortest exposure chains from internet-facing entry points to critical assets over evidence-backed relationships, graded *verified*, *probable* or *theoretical*. |
+| **Remediate** | Tasks with assignee, team and due date; Jira, GitHub and GitLab tickets; one-click retest; manual verification; regressions reopen automatically. |
+| **Govern** | Rule-based policies (form builder or JSON) with exceptions and evaluation history; hash-chained audit log; executive, technical, compliance and AI reports. |
+| **Analyse with AI** | Optional Claude-powered explanations of findings and attack paths, plus an executive briefing. Advisory only, schema-validated, budgeted, and unable to change data. |
+
+---
+
+## AI security
+
+AI systems are first-class assets, not a separate product.
+
+| Area | How it works |
+| --- | --- |
+| **Discovery** | Repository analysis recognises 26 AI technologies (providers, frameworks, vector databases, serving runtimes, MCP SDKs), committed provider keys (the value is never stored), MCP client configuration and model files. |
+| **Shadow AI** | Provider usage is compared with the organization's approved list. With no list set, usage is reported as *unknown* rather than *unapproved*. |
+| **Continuous posture** | Rules over agent tools and capabilities, autonomy, memory, delegation, identity, RAG document-level authorization and tenant isolation, mapped to the **OWASP LLM Top 10 (2025)**, **MITRE ATLAS** and **NIST AI RMF**. The review runs when an AI asset changes, after assessments that touch AI assets, and daily. Controls nobody has recorded on an exposed or production asset are reported, so nothing passes for lack of data. |
+| **MCP** | Static review of server definitions, plus a live probe limited to `initialize` and `*/list` calls. `tools/call` is never sent; a hard guard enforces this. |
+| **Model files** | Pickle streams are disassembled without being executed; references to code-execution callables are reported with opcode evidence. |
+| **AI red team** | 15 deterministic, marker- and canary-based tests inside an authorization, scope, budget and rate-limit envelope. A test fails only when the planted value or forbidden tool call appears; requested tools are recorded, never run. |
+
+Details: [docs/ai-security.md](docs/ai-security.md).
+
+---
+
+## Architecture
+
+A modular monolith (FastAPI) with a PostgreSQL-backed job queue. The browser talks only to the Next.js server, which proxies `/api/*` to the API. Assessments execute only in workers, behind the scope check and an SSRF-guarded HTTP client.
 
 ```mermaid
 flowchart LR
-  B[Browser] -->|HTTPS, session cookie| W[Next.js web]
+  B[Browser] -->|HTTPS + session cookie| W[Next.js web tier]
   W -->|/api proxy| A[FastAPI API]
-  A --> P[(PostgreSQL<br/>data + job queue<br/>row-level security)]
+  CI[CI/CD pipelines] -->|upload-only token| A
+  A --> P[(PostgreSQL 17<br/>data · job queue · RLS)]
   A -.rate limits.-> R[(Redis)]
-  A --> S[(Object storage<br/>evidence, reports)]
+  A --> S[(Object storage<br/>evidence · reports)]
   K[Workers + scheduler] --> P
   K --> S
-  K -->|scope-checked, SSRF-guarded| T[Authorized targets:<br/>DNS, HTTP, MCP, LLM endpoints]
-  K --> C[Cloud APIs<br/>read-only]
-  K --> I[Threat intel:<br/>KEV, EPSS, NVD, OSV, ATT&CK, ATLAS]
-  K --> X[Scanner binaries:<br/>nmap, nuclei, ...]
-  A -->|tickets, webhooks| N[Jira, GitHub, GitLab, Slack, Teams]
+  K -->|scope-checked · SSRF-guarded| T[Authorized targets<br/>DNS · HTTP · APIs · MCP · LLMs]
+  K --> C[Cloud APIs, read-only]
+  K --> I[Threat intel<br/>KEV · EPSS · NVD · OSV · ATT&CK · ATLAS]
+  K --> X[Scanner binaries]
+  A -->|tickets · notifications| N[Jira · GitHub · GitLab · Slack · Teams · Webhooks · Email]
 ```
 
-Details: [docs/architecture.md](docs/architecture.md). Decisions: [docs/adr/](docs/adr/).
-
-## Technology stack
-
-| Layer | Choice |
+| Layer | Technology |
 | --- | --- |
-| API | Python 3.12, FastAPI, Pydantic 2, SQLAlchemy 2 (sync, psycopg 3), Alembic |
-| Data | PostgreSQL 17 (row-level security, `pg_trgm`), Redis 7 (rate limiting), local or S3-compatible object storage |
-| Jobs | PostgreSQL-backed queue (`FOR UPDATE SKIP LOCKED`) with an in-process scheduler ([ADR 0002](docs/adr/0002-postgres-job-queue.md)) |
-| Frontend | Next.js 16 (App Router), React 19, TypeScript (strict), Tailwind CSS 4, TanStack Query and Table, React Hook Form, Zod, Recharts, React Flow |
-| Security libraries | argon2-cffi (Argon2id), cryptography (Fernet), pyotp, defusedxml |
-| Observability | structlog (JSON), Prometheus metrics, optional OpenTelemetry tracing |
-| Tooling | uv, ruff, mypy, pytest, moto; pnpm, ESLint, Vitest, Testing Library |
+| API | Python 3.12, FastAPI, Pydantic 2, SQLAlchemy 2 (psycopg 3), Alembic |
+| Data | PostgreSQL 17 with row-level security and `pg_trgm`; Redis 7 for shared rate limits; local or S3-compatible object storage |
+| Jobs | PostgreSQL queue (`FOR UPDATE SKIP LOCKED`) with idempotency, backoff, dead-lettering, a stale-job reaper and per-tenant concurrency caps |
+| Frontend | Next.js 16 (App Router), React 19, strict TypeScript, Tailwind CSS 4, TanStack Query and Table, React Hook Form, Zod, Recharts, React Flow |
+| Security | Argon2id, Fernet with key rotation, TOTP, defusedxml, address-pinned outbound HTTP |
+| Observability | Structured JSON logs, Prometheus metrics for API and workers, optional OpenTelemetry tracing, Grafana dashboard and alert rules |
 
-UI components follow the shadcn/ui approach (small local primitives styled with Tailwind) but are written in `frontend/components/ui.tsx` rather than generated by the shadcn CLI.
+Design decisions are recorded as ADRs: [tenant isolation with RLS](docs/adr/0001-tenant-isolation-rls.md), [PostgreSQL job queue](docs/adr/0002-postgres-job-queue.md), [synchronous SQLAlchemy](docs/adr/0003-synchronous-sqlalchemy.md), [authorized scope as a precondition](docs/adr/0004-authorized-scope-precondition.md), [deterministic AI red-team detection](docs/adr/0005-deterministic-ai-redteam-detection.md). Full description: [docs/architecture.md](docs/architecture.md).
 
-## Repository structure
+---
 
-```
-backend/
-  app/
-    api/            dependencies (authentication, RBAC, pagination) and router aggregation
-    core/           configuration, security primitives, SSRF-guarded HTTP, rate limiting, storage, logging
-    db/             declarative base, tenant-scoped sessions
-    models/         SQLAlchemy models (48 tables)
-    domains/        one package per domain: auth, admin, assets, findings, assessments, risk, policy,
-                    attack_paths, remediation, intel, ai, analytics, notifications, reports, audit, ...
-    engines/        assessment engines (dns_discovery, http_exposure, openapi_analysis, scanners,
-                    aws_posture, ai/*, ai_redteam/*)
-    integrations/   connector framework, scanner parsers, intel sources, ticketing, notification channels, LLM clients
-    workers/        job queue and worker/scheduler process
-    cli.py          operational commands
-  migrations/       Alembic migrations (schema, then row-level security and grants)
-  tests/            pytest suite (runs against a real PostgreSQL)
-frontend/
-  app/              routes: (auth) sign-in and registration, (app) the 19 navigation sections
-  components/       UI primitives, server-driven data table, graph, application shell
-  features/         shared feature components (findings table, assessments panel, module page)
-  lib/              API client, hooks, validation schemas, formatters
-  tests/            Vitest unit and component tests
-infrastructure/     docker (database role bootstrap), kubernetes, monitoring
-scripts/            dev-db.sh, lab.py (local practice targets), lab_walkthrough.py
-docs/               architecture, deployment, security, integrations, AI security, development, API, ADRs
-```
+## Security model
 
-## Prerequisites
+| Control | Implementation |
+| --- | --- |
+| **Tenant isolation** | Forced row-level security on every tenant table; each transaction sets `app.current_org`; the runtime role is `NOSUPERUSER NOBYPASSRLS`. A test fails the build if a tenant table lacks a policy. |
+| **Authentication** | Argon2id passwords, lockout, TOTP MFA, server-side sessions stored hashed with idle and absolute expiry, CSRF tokens for browsers, bearer tokens for scripts, invitation links instead of admin-chosen passwords. |
+| **Authorization** | 33 permissions in 9 built-in and any number of custom roles. Nobody can grant a permission they don't hold, change their own role, or administer a more privileged account. |
+| **Outbound safety** | One HTTP client resolves, validates and pins every destination; link-local and cloud-metadata addresses are always refused; private ranges need explicit opt-in at both server and scope level. |
+| **Secrets** | Integration credentials and MFA secrets are encrypted at rest with rotatable keys and never returned by the API; evidence passes a credential redactor before storage. |
+| **Audit** | Append-only, per-organization hash-chained audit log with an integrity check from the UI and CLI. |
+| **Uploads** | Extension and content-signature checks, generated storage keys, size limits, always served as attachments. |
+| **Client addresses** | `X-Forwarded-For` is honoured only from configured trusted proxies, read right to left. |
 
-- Python 3.12 and [uv](https://docs.astral.sh/uv/)
-- Node.js 22 or later and pnpm 9
-- PostgreSQL 17 (15+ should work; 17 is what is tested) and, optionally, Redis 7
-- Optional scanner binaries on workers: `nmap`, `nuclei`, `trivy`, `grype`, `semgrep`, `gitleaks`, `checkov`
-- Or Docker with Compose v2 for the containerised path
+Threat model and hardening guidance: [docs/security.md](docs/security.md). Vulnerability reporting: [SECURITY.md](SECURITY.md).
 
-## Local development setup
+---
+
+## Deployment options
+
+| Option | Use it for | Start here |
+| --- | --- | --- |
+| **Local development** | Building and testing | [Quick start](#quick-start) |
+| **Docker Compose** | A single host, evaluation or small teams | [`docker-compose.yml`](docker-compose.yml) |
+| **Kubernetes** | Production: scale API and workers independently | [`infrastructure/kubernetes/`](infrastructure/kubernetes/) and [docs/deployment.md](docs/deployment.md) |
+| **Public demo (Render free plan)** | Showing the product with shared demo accounts | [`render.yaml`](render.yaml) and [docs/demo.md](docs/demo.md) |
+
+### Quick start
+
+Requirements: Python 3.12 with [uv](https://docs.astral.sh/uv/), Node.js 22 with pnpm 9, and PostgreSQL 17 (`scripts/dev-db.sh` starts one with Redis).
 
 ```bash
-./scripts/dev-db.sh                      # PostgreSQL on :54329 and Redis on :63799, with dev roles and databases
+./scripts/dev-db.sh                                   # PostgreSQL :54329 and Redis :63799 with dev roles
 cd backend && uv sync && uv run alembic upgrade head
-CTEM_COOKIE_SECURE=false uv run uvicorn app.main:app --reload --port 8000   # terminal 1
-uv run python -m app.workers.runner                                          # terminal 2
-cd ../frontend && pnpm install && pnpm dev                                   # terminal 3
+CTEM_COOKIE_SECURE=false uv run uvicorn app.main:app --reload --port 8000   # API
+uv run python -m app.workers.runner                                          # worker + scheduler
+cd ../frontend && pnpm install && pnpm dev                                   # web on :3000
 ```
 
-Open <http://localhost:3000>, choose **Create an account**, and register an organization. Without SMTP configured, account emails are not sent; in development the verification and reset links are written to the API log.
+Open <http://localhost:3000> and create an organization. To try active engines safely, `python3 scripts/lab.py` starts deliberately weak local targets (web app, API, MCP server, toy model). Authorize `http://127.0.0.1:8808` in scope, and run the API and worker with `CTEM_ALLOW_PRIVATE_TARGETS=true`.
 
-The defaults in `backend/app/core/config.py` match `scripts/dev-db.sh`, so no `.env` file is needed for development. `make dev-db`, `make api`, `make worker`, `make web` wrap the same commands.
-
-### Trying it against local practice targets
+### Docker Compose
 
 ```bash
-python3 scripts/lab.py                   # deliberately weak web app, API, MCP server and toy model on 127.0.0.1:8808
-```
-
-Run the API and worker with `CTEM_ALLOW_PRIVATE_TARGETS=true`, then in **Administration → Authorized scope** authorize `http://127.0.0.1:8808` as a URL with *active testing* and *private network*. Create assessments from the UI, or run the scripted walkthrough:
-
-```bash
-CTEM_EMAIL=you@example.com CTEM_PASSWORD='...' python3 scripts/lab_walkthrough.py
-```
-
-## Public demo
-
-`Dockerfile.demo` builds one container (PostgreSQL, API, worker and web) for showing the platform on a single-service host such as Render, with one sign-in per role listed on the login page. `render.yaml` deploys it as a Render Blueprint. Demo mode disables active testing and stored credentials, and data resets on every restart. See [docs/demo.md](docs/demo.md).
-
-## Docker deployment
-
-```bash
-cp .env.example .env        # set CTEM_SECRET_KEY, CTEM_ENCRYPTION_KEYS and the three database passwords
+cp .env.example .env      # set CTEM_SECRET_KEY, CTEM_ENCRYPTION_KEYS and the database passwords
 docker compose up --build
 ```
 
-This starts PostgreSQL (creating the `ctem_owner` and `ctem_app` roles), Redis, a one-shot migration job, the API, one worker and the web frontend on port 3000. For plain-HTTP local use set `CTEM_COOKIE_SECURE=false` and `CTEM_ENV=development`; production mode refuses to start with insecure settings.
+This starts PostgreSQL (creating the owner and runtime roles), Redis, a one-shot migration job, the API, a worker and the web tier on port 3000. Production mode refuses to start with insecure settings.
 
-> The Dockerfiles and Compose file have not been built in the environment where this release was developed (no container runtime was available). They are exercised by the `images` job in CI. Treat the first build as unverified.
+### Public demo on Render
 
-## Environment configuration
+`Dockerfile.demo` runs PostgreSQL, the API with an embedded worker, and the web tier in one container sized for Render's **free plan** (measured peak about 370 MB of the 512 MB limit). The sign-in page lists one account per role with one-click sign-in:
 
-All settings are environment variables with the `CTEM_` prefix; the complete list with comments is in [.env.example](.env.example). The ones that matter most:
+| Role | Email | Password |
+| --- | --- | --- |
+| Super Administrator | `super.admin@demo.example.com` | `Demo-CTEM-2026!` |
+| Organization Administrator | `org.admin@demo.example.com` | same |
+| Security Administrator | `security.admin@demo.example.com` | same |
+| Security Analyst | `analyst@demo.example.com` | same |
+| Vulnerability Manager | `vuln.manager@demo.example.com` | same |
+| Cloud Security Engineer | `cloud.engineer@demo.example.com` | same |
+| Red Team Operator | `red.team@demo.example.com` | same |
+| Auditor | `auditor@demo.example.com` | same |
+| Read-only User | `viewer@demo.example.com` | same |
+
+A generated, deliberately insecure sample AI application is analysed by the real engines on first start, so the demo opens with real findings. Because the credentials are public, demo mode:
+- refuses active testing (dry runs still work) and stored credentials;
+- protects the shared accounts from password, MFA and role changes;
+- does not record visitor addresses;
+- resets on every restart.
+
+To deploy: on Render choose **New → Blueprint**, select this repository, and apply. See [docs/demo.md](docs/demo.md).
+
+> The container images have not yet been built on the development machine, which had no container runtime. CI builds and smoke-tests them on every push.
+
+### Key configuration
+
+All settings are `CTEM_`-prefixed environment variables. The full list with comments is in [`.env.example`](.env.example).
 
 | Variable | Purpose |
 | --- | --- |
-| `CTEM_ENV` | `development`, `test` or `production`. Production validates that secrets and secure cookies are configured. |
-| `CTEM_DATABASE_URL` | Runtime connection as the non-owner role (`ctem_app`). |
-| `CTEM_MIGRATION_DATABASE_URL` | Migration connection as the schema owner (`ctem_owner`). |
-| `CTEM_SECRET_KEY` | Keys the HMAC used to hash session and one-time tokens. |
-| `CTEM_ENCRYPTION_KEYS` | Fernet keys for integration credentials and MFA secrets. First key encrypts; all decrypt. |
-| `CTEM_REDIS_URL` | Shared rate limiting. Required when more than one API process runs. |
-| `CTEM_ALLOW_PRIVATE_TARGETS` | Allows assessing private addresses that are also authorized in scope. Default `false`. |
-| `CTEM_REPO_SCAN_ROOT` | Directory on workers under which repositories may be analysed. Empty disables path targets. |
-| `CTEM_ALLOW_REGISTRATION` | Self-service organization registration. Disable after onboarding. |
-| `CTEM_TRUSTED_PROXIES` | CIDRs of reverse proxies whose `X-Forwarded-For` is trusted for the client address (rate limits, audit log). |
-| `CTEM_UPSTREAM_PROXY` | Web tier: `true` only when a proxy in front appends the real client address. Otherwise the header is stripped. See [deployment](docs/deployment.md#client-addresses). |
-| `CTEM_ALLOW_SERVER_CLAUDE_CREDENTIALS` | Lets organizations use the server's own Claude credentials for AI analysis. Default `false`. |
-| `CTEM_BACKEND_URL` | Frontend build-time setting: the API origin the Next.js server proxies to. |
+| `CTEM_ENV` | `development`, `test` or `production`; production validates secrets and secure cookies. |
+| `CTEM_DATABASE_URL` / `CTEM_MIGRATION_DATABASE_URL` | Runtime role (subject to RLS) and schema-owner role (migrations). |
+| `CTEM_SECRET_KEY` / `CTEM_ENCRYPTION_KEYS` | Token hashing key; Fernet keys (first encrypts, all decrypt). |
+| `CTEM_REDIS_URL` | Shared rate limiting; required with more than one API replica. |
+| `CTEM_TRUSTED_PROXIES` / `CTEM_UPSTREAM_PROXY` | Which proxies may supply the client address. |
+| `CTEM_ALLOW_PRIVATE_TARGETS` | Permit assessing private networks that are also authorized in scope. |
+| `CTEM_REPO_SCAN_ROOT` | Directory on workers under which repositories may be analysed. |
+| `CTEM_ALLOW_REGISTRATION` / `CTEM_REQUIRE_EMAIL_VERIFICATION` | Self-service onboarding controls. |
+| `CTEM_EMBEDDED_WORKER` | Run the worker inside the API process for small single-container deployments. |
+| `CTEM_DEMO_MODE` | Public demo behaviour (seeded accounts and restrictions). Never enable on a real deployment. |
 
-## Database setup
+---
 
-Two roles are required. Migrations fail with an explanatory error if the application role is missing.
+## Integrations
 
-```sql
-CREATE ROLE ctem_owner LOGIN PASSWORD '...';
-CREATE ROLE ctem_app   LOGIN PASSWORD '...' NOSUPERUSER NOBYPASSRLS;
-CREATE DATABASE ctem OWNER ctem_owner;
-```
+Each integration states how it is used and what it was verified against during development.
 
-`scripts/dev-db.sh` and `infrastructure/docker/postgres/10-roles.sh` do this for development and Compose. The application role must not be a superuser or have `BYPASSRLS`, otherwise tenant isolation is not enforced by the database. Use `CTEM_APP_DB_ROLE` if you name the role differently.
-
-## Database migrations
-
-```bash
-cd backend
-uv run alembic upgrade head                           # apply
-uv run alembic revision --autogenerate -m "message"   # create after changing models
-uv run alembic check                                  # verify models and migrations agree
-```
-
-New tenant-owned tables must be added to a migration that enables row-level security for them; `tests/test_isolation_security.py` fails if a table with `organization_id` lacks forced RLS.
-
-## Running backend services
-
-```bash
-cd backend && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers
-```
-
-Health: `GET /healthz` (liveness), `GET /readyz` (database and Redis), `GET /metrics` (Prometheus).
-
-## Running frontend services
-
-```bash
-cd frontend && pnpm dev                                   # development
-CTEM_BACKEND_URL=http://127.0.0.1:8000 pnpm build && pnpm start   # production build
-```
-
-## Running background workers
-
-```bash
-cd backend && uv run python -m app.workers.runner
-```
-
-A worker executes queued jobs (assessments, imports, reports, notification delivery, risk recalculation, attack-path computation) and runs the scheduler (recurring assessments, hourly SLA and risk-acceptance checks, daily policy evaluation and KEV/EPSS refresh). Run as many as needed; claiming is concurrency-safe and scheduling is serialised with an advisory lock. `CTEM_WORKER_METRICS_PORT` exposes worker metrics. `uv run python -m app.cli run-pending` drains the queue once without a scheduler.
-
-## Running tests
-
-```bash
-cd backend && uv run pytest              # 102 tests; needs the PostgreSQL from scripts/dev-db.sh
-cd frontend && pnpm test                 # 20 tests
-cd frontend && pnpm lint && pnpm typecheck && pnpm build
-```
-
-Backend tests run against a real PostgreSQL database (`ctem_test`) because row-level security cannot be tested otherwise. They execute `nmap` and `nuclei` against loopback listeners when those binaries are installed and skip those two tests when not. External APIs (CISA, FIRST, OSV, AWS, ticketing, LLM providers) are replaced by fixtures; no test contacts the internet.
-
-## Available integrations
-
-The **Integrations** page lists every integration with how it is used: *connect* (the platform calls the system's API with stored credentials), *tool* (workers run the tool; its reports can also be uploaded), *upload* (reports are uploaded and normalised) and *feed* (public data synchronised by workers). The last column records what each was verified against during development.
-
-| Integration | How it is used | Verified against |
+| Integration | Mode | Verified against |
 | --- | --- | --- |
-| Nmap, Nuclei | Tool | Real binaries scanning local listeners |
-| Trivy, Grype, Semgrep, Gitleaks, Checkov | Tool, report upload, or CI/CD pipeline | Real binaries (Trivy 0.76, Grype 0.121, Semgrep 1.185, Gitleaks 8.30, Checkov 3.4) scanning a sample repository |
-| OWASP ZAP, Prowler (AWS, Azure, Google Cloud, Kubernetes), SARIF, CycloneDX/SPDX SBOM | Report upload or CI/CD pipeline | Representative report files |
-| CISA KEV, FIRST EPSS, NIST NVD, MITRE ATT&CK, MITRE ATLAS | Feed | The live public sources (1,779 KEV entries, 765 ATT&CK and 278 ATLAS objects, CVSS 3.1 and 4.0 from NVD) |
-| OSV | Queried during dependency and SBOM analysis | The live OSV API |
-| DNS and certificate transparency | Built-in discovery | Live public DNS and crt.sh |
-| AWS | Connect (read-only) | moto, an in-process emulation of the AWS APIs. Not yet run against a real account |
-| GitHub Issues, GitLab Issues, Jira Cloud | Connect | Recorded API request and response shapes. Not yet run against real accounts |
-| Webhook (HMAC-signed), Slack, Microsoft Teams | Connect | Local receivers. Not yet posted to real Slack or Teams workspaces |
-| Email (SMTP) | Built-in | A local SMTP server |
-| Claude | Connect (Administration → AI analysis) | The official SDK against a recorded API stand-in. Not yet called with a real key |
-| Model endpoints for the AI red team: OpenAI-compatible, Claude, Gemini, custom HTTP | Connect | Recorded API stand-ins and the local lab model |
+| Nmap, Nuclei | Tool on workers | Real binaries against local listeners |
+| Trivy, Grype, Semgrep, Gitleaks, Checkov | Tool, report upload or CI/CD | Real binaries against a sample repository |
+| OWASP ZAP, Prowler, SARIF, CycloneDX, SPDX | Report upload or CI/CD | Representative report files |
+| CISA KEV, FIRST EPSS, NIST NVD, MITRE ATT&CK, MITRE ATLAS | Feed | The live public sources |
+| OSV | Dependency and SBOM analysis | The live OSV API |
+| DNS and certificate transparency | Built-in discovery | Live DNS and crt.sh |
+| AWS | Connect, read-only | moto (AWS API emulation); not yet a real account |
+| Jira Cloud, GitHub Issues, GitLab Issues | Ticketing | Recorded API shapes; not yet real accounts |
+| Slack, Microsoft Teams, HMAC-signed webhooks, SMTP | Notifications | Local receivers |
+| Claude | AI analysis (Console API key or server credentials) | The official SDK against a recorded stand-in |
+| OpenAI-compatible, Claude, Gemini, custom HTTP endpoints | AI red-team targets | Recorded stand-ins and the local lab model |
 
-Not available: GitHub/GitLab as repository sources (repositories are analysed from a path on the workers), native Azure and Google Cloud connectors (use Prowler upload), ScoutSuite, live Kubernetes inventory.
-
-**CI/CD pipelines.** Pipelines send scanner reports to `POST /api/v1/ci/ingest` with an upload-only token created under **Integrations → CI/CD pipelines**, which also generates the job for GitHub Actions, GitLab CI, Jenkins or a shell. The response reports new and seen findings and an optional severity gate that can fail the build. See [CI/CD ingestion](docs/integrations.md#cicd-ingestion).
-
-Details and required permissions: [docs/integrations.md](docs/integrations.md).
-
-## Security modules
-
-Seventeen assessment engines are registered (`GET /api/v1/assessments/engines`): `dns_discovery`, `http_exposure`, `nmap_scan`, `nuclei_scan`, `openapi_analysis`, `scanner_import`, `trivy_scan`, `grype_scan`, `semgrep_scan`, `gitleaks_scan`, `checkov_scan`, `aws_posture`, `repository_analysis`, `mcp_probe`, `ai_endpoint_probe`, `ai_posture_review`, `ai_redteam`. Each declares whether it is active (sends traffic to targets), its accepted target kinds, required tool or connector, and a typed configuration schema from which the UI builds its form.
-
-## Connecting Claude
-
-AI features (finding and attack-path explanations, and the executive briefing on the Overview page) use Claude. An organization administrator connects it under **Administration → AI analysis**:
-
-- **Claude Console API key.** Create a key at platform.claude.com → Settings → API keys. The platform checks it against the Models API (which is free), lists the models the key can use, and stores the key encrypted.
-- **Server sign-in.** When the deployment sets `CTEM_ALLOW_SERVER_CLAUDE_CREDENTIALS=true`, organizations can instead use the server's own credentials, resolved by the Anthropic SDK: `ANTHROPIC_API_KEY`, an `ant auth login` sign-in for local use, or workload identity federation in production. Nothing is stored in the platform, and usage is billed to the operator's Console organization, so leave this off on shared deployments.
-
-Usage is billed to a Claude Console organization. **Claude Pro, Max and Team plans do not include API access** and cannot be used for this. The default model is `claude-opus-5-5`; requests enable Claude's server-side refusal fallback. Monthly token budgets, per-request limits and the option to include evidence in prompts are set on the same page.
-
-## AI security capabilities
-
-- **Discovery.** `repository_analysis` detects 26 AI technologies (providers, frameworks, vector databases, serving runtimes, MCP SDKs) from dependencies, imports, endpoints and environment variable names; AI provider credentials committed to source (value never stored); MCP client configuration; model artifacts.
-- **Shadow AI.** Providers not on the organization's approved list produce findings. With no list configured, usage is reported as *unknown*, not *unapproved*. Visibility is limited to analysed sources and stated as such in the UI.
-- **MCP.** Static review of server definitions (plaintext transport, literal secrets, unpinned packages, broad filesystem roots, privileged launch, auto-approved tools) and a live probe that performs `initialize`, `tools/list`, `resources/list`, `prompts/list` only. `tools/call` is never sent; a hard guard enforces this.
-- **Models.** Pickle streams are disassembled without execution; references to code-execution callables are reported with opcode evidence and wording that does not claim malice.
-- **Posture.** Rules over declared agent tools, autonomy, memory, identity, RAG authorization and tenant isolation, mapped to OWASP LLM Top 10 (2025), MITRE ATLAS and NIST AI RMF. The review runs automatically, debounced, whenever an AI asset is added or its posture changes, after any assessment that touches AI assets, and daily. An internet-exposed or production AI asset whose key controls are not recorded gets an `ai.posture.unrecorded` finding, so an asset is never reported clean for lack of data. Because the review re-evaluates the complete recorded configuration, a finding whose rule no longer applies is marked remediated with the reason recorded; scanner findings that are merely not observed again stay open.
-- **Inventory.** AI assets are added on **AI Security → Add AI asset** (or as any asset of an AI type) and their configuration, including agent tools and capabilities, is recorded in the posture form.
-- **Red team.** Marker- and canary-based tests; a test is *vulnerable* only when the planted value or forbidden tool call appears in the response. Tools the target requests are recorded, never executed.
-
-See [docs/ai-security.md](docs/ai-security.md).
-
-## API documentation
-
-Interactive OpenAPI documentation is served at `/api/docs` and the schema at `/api/openapi.json` (107 paths under `/api/v1`). Conventions and examples: [docs/api.md](docs/api.md).
+**CI/CD.** Pipelines upload reports to `POST /api/v1/ci/ingest` with an upload-only token from **Integrations → CI/CD pipelines**. That page also generates ready-to-use GitHub Actions, GitLab CI, Jenkins and shell jobs. The response returns new and seen findings and an optional severity gate (HTTP 412) that fails the build:
 
 ```bash
-TOKEN=$(curl -s localhost:8000/api/v1/auth/login -H 'content-type: application/json' \
-  -d '{"email":"you@example.com","password":"..."}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
-curl -s "localhost:8000/api/v1/findings?open_only=true&risk_level=critical&sort=risk_score&order=desc" -H "authorization: Bearer $TOKEN"
+curl --fail-with-body -sS -X POST "$CTEM_URL/api/v1/ci/ingest" \
+  -H "Authorization: Bearer $CTEM_CI_TOKEN" \
+  --url-query "format=trivy" --url-query "repository=$GITHUB_REPOSITORY" \
+  --url-query "commit=$GITHUB_SHA" --url-query "fail_on=high" --url-query "exit_code=true" \
+  --data-binary @trivy.json
 ```
 
-## Authentication and RBAC
+Permissions required by each connector: [docs/integrations.md](docs/integrations.md).
 
-- Email and password with Argon2id; account lockout; TOTP MFA; opaque server-side sessions (stored hashed) with idle and absolute expiry and per-session revocation; password reset and email verification with single-use tokens.
-- Browsers use an `HttpOnly`, `SameSite=Lax` cookie plus a CSRF token on unsafe methods. API clients use `Authorization: Bearer`.
-- 33 permissions; nine built-in roles (Super Administrator, Organization Administrator, Security Administrator, Security Analyst, Vulnerability Manager, Cloud Security Engineer, Red Team Operator, Auditor, Read-only User) plus custom roles. Nobody can grant a permission they do not hold, change their own role, or administer a more privileged account.
-- Optional enforcement of email verification (`CTEM_REQUIRE_EMAIL_VERIFICATION`).
-- Platform operators (`python -m app.cli grant-super-admin <email>`) get an **All organizations** console to see each organization's size and suspend or reinstate it, without access to its data.
-- OAuth/OIDC single sign-on is not available.
+---
 
-## Multi-tenancy
+## Operations
 
-Every tenant-owned table has `organization_id` and a forced row-level security policy. Each transaction sets `app.current_org`; a row is visible or writable only when it matches. The API and workers connect as a role that cannot bypass RLS. Background jobs run inside a session scoped to the job's organization. Global reference data (vulnerability catalogue, threat intelligence) is shared and contains no tenant data. See [ADR 0001](docs/adr/0001-tenant-isolation-rls.md).
-
-## Security considerations
-
-Summarised here; full detail in [docs/security.md](docs/security.md) and [SECURITY.md](SECURITY.md).
-
-- All server-initiated HTTP goes through one client that resolves, validates and pins the destination address; link-local and metadata addresses are always refused.
-- Integration credentials are encrypted at rest and never returned by the API; evidence passes through a credential redactor before storage.
-- The audit log is append-only for the application role and hash-chained per organization.
-- Uploads are restricted by extension and content signature, stored under generated keys, and always served as attachments.
-- AI-assisted analysis is advisory, schema-validated, budgeted, and has no ability to change findings.
-
-## Production deployment
-
-Reference Kubernetes manifests are in `infrastructure/kubernetes/`; guidance on TLS termination, secrets, scaling, scanner images and network policy is in [docs/deployment.md](docs/deployment.md). Minimum requirements: TLS in front of the web tier, `CTEM_ENV=production`, Redis configured, object storage on S3-compatible storage or a persistent volume shared by API and workers, and self-registration disabled after onboarding.
-
-## Backup and recovery
-
-State lives in PostgreSQL and object storage. Back up both; Redis holds only rate-limit counters. Keep `CTEM_ENCRYPTION_KEYS` in a secret manager and back it up separately: without it, stored integration credentials and MFA secrets cannot be decrypted. Procedures, restore verification and key rotation are in [docs/deployment.md](docs/deployment.md#backup-and-recovery).
-
-## Troubleshooting
-
-| Symptom | Cause and fix |
+| Concern | Provided |
 | --- | --- |
-| Migration fails: `Application role ctem_app does not exist` | Create the roles (see Database setup) or set `CTEM_APP_DB_ROLE`. |
-| Sign-in succeeds but every request returns 401 over plain HTTP | The session cookie is `Secure`. Use HTTPS or set `CTEM_COOKIE_SECURE=false` for local use. |
-| `CSRF token missing or invalid` from a script | Scripts should send `Authorization: Bearer <access_token>` instead of the cookie. |
-| Assessment stays *queued* | No worker is running, or the organization is at `CTEM_MAX_RUNNING_JOBS_PER_ORG`. |
-| `Target ... is not covered by an authorized scope entry` | Add the target under Administration → Authorized scope. Active engines need *active testing*. |
-| `Destination address ... is not publicly routable` | Private targets need both the scope entry's *private network* flag and `CTEM_ALLOW_PRIVATE_TARGETS=true` on API and workers. |
-| `Required tool 'trivy' is not installed on this worker` | Install the binary in the worker image; the engine list shows what each worker build has. |
-| PostgreSQL refuses to start on macOS: `postmaster became multithreaded` | Start it with `LC_ALL=en_US.UTF-8` (handled by `scripts/dev-db.sh`). |
-| Registration rejects an address at `.test` or `.example` | Reserved domains are rejected by email validation; use a real domain or `example.com`. |
+| Health | `GET /healthz` (liveness), `GET /readyz` (database and Redis) |
+| Metrics | `GET /metrics` on the API; `CTEM_WORKER_METRICS_PORT` on workers; Prometheus config, alert rules and Grafana dashboard in `infrastructure/monitoring/` |
+| Jobs | Background jobs view with state filters and cancel; jobs are retried with backoff, dead-lettered when they keep failing, and re-queued if a worker dies |
+| CLI | `python -m app.cli grant-super-admin`, `verify-audit`, `rotate-secrets`, `run-pending`, `seed-demo` |
+| Backup | State lives in PostgreSQL and object storage; keep `CTEM_ENCRYPTION_KEYS` in a secret manager and back it up separately ([procedure](docs/deployment.md#backup-and-recovery)) |
+
+### API
+
+Interactive documentation is served at `/api/docs`, and the schema at `/api/openapi.json`. Browsers authenticate with a session cookie and CSRF token; scripts use `Authorization: Bearer`. Conventions: [docs/api.md](docs/api.md).
+
+### Quality
+
+```bash
+cd backend  && uv run pytest                                  # 113 tests against a real PostgreSQL (no internet access)
+cd frontend && pnpm lint && pnpm typecheck && pnpm test && pnpm build
+```
+
+CI runs ruff, mypy (advisory), pytest with coverage, `pip-audit`, ESLint, TypeScript, Vitest, a production build, `pnpm audit`, Semgrep SAST, and image builds with a Trivy scan and a demo-image smoke test.
+
+---
+
+## Repository layout
+
+```text
+backend/app/
+  api/            authentication, RBAC and pagination dependencies; router aggregation
+  core/           configuration, security primitives, SSRF-guarded HTTP, rate limits, storage, logging
+  domains/        one package per domain: auth, admin, assets, findings, assessments, ci, risk, policy,
+                  attack_paths, remediation, intel, ai, analytics, notifications, reports, audit, demo
+  engines/        assessment engines (discovery, web/API, scanners, AWS, AI, AI red team)
+  integrations/   connector framework, scanner parsers, intel feeds, ticketing, notifications, LLM clients
+  workers/        job queue, worker and scheduler
+backend/migrations/  Alembic migrations, including row-level security policies and grants
+frontend/            Next.js app: 20 product areas, shared data table, feature components
+infrastructure/      Kubernetes manifests, Postgres role bootstrap, demo entrypoint, monitoring
+docs/                architecture, deployment, security, integrations, AI security, API, demo, ADRs
+```
+
+---
 
 ## Known limitations
 
-- **Single sign-on** (OAuth/OIDC, SAML) is not available. WebSockets are not used; the UI polls.
-- **Cloud.** Only AWS has a native connector, and it covers the services listed above (no Lambda, ELB, Secrets Manager or VPC flow-log checks). Azure and GCP rely on Prowler import.
-- **Kubernetes** live inventory is not implemented; Kubernetes findings arrive through Trivy/Checkov/Prowler import or the EKS endpoint check.
-- **Web application testing** is limited to passive analysis and safe read-only probes. There is no crawler and no injection testing (SQLi, XSS, SSRF); use ZAP, Nuclei or Semgrep and import the results. Authenticated web/API testing with stored test identities is not implemented.
-- **Repositories** are analysed from a local path on the worker; there is no GitHub/GitLab connector or clone step.
-- **Attack paths** are derived from recorded relationships. Network reachability is not computed, and any medium-or-higher firm finding on a node is treated as a foothold, which can overstate a path. Manually asserted relationships cap a path at *probable*.
-- **AI red team** tests are single-turn. Multi-turn, multimodal and adaptive attacks are not covered. Retrieval and tenant-isolation tests need operator-planted canaries.
-- **Shadow AI** covers analysed repositories, probed endpoints and registered assets only; SaaS and browser-extension usage is not observed.
-- **Threat intelligence.** NVD enrichment is per-CVE and rate limited; there is no bulk NVD mirror, vendor-advisory ingestion or indicator (IOC) management. GitHub Security Advisories are covered through OSV.
-- **Not yet run against real accounts:** AWS, GitHub/GitLab/Jira, Slack and Teams workspaces, and the Claude, OpenAI and Gemini APIs. The Docker and Kubernetes files have not been built or deployed.
-- **Type checking.** `mypy` reports 15 findings (typing strictness, no known runtime defects); the CI step is advisory.
-- **Scale.** Policy evaluation and attack-path computation load an organization's assets into memory; they have been exercised with hundreds of assets, not hundreds of thousands. There are no load tests.
-- No sample data set ships. `scripts/lab.py` runs deliberately weak local targets, including an HTTPS listener with a short-lived self-signed certificate.
+- **Identity.** No OIDC or SAML single sign-on, and no SCIM provisioning.
+- **Cloud.** AWS is the only native cloud connector; Azure and Google Cloud come in through Prowler reports. There is no live Kubernetes inventory.
+- **Web testing.** Passive analysis and safe read-only probes only; there is no crawler and no injection testing. Use ZAP, Nuclei or Semgrep and import the results.
+- **Repositories.** Analysed from a path on the worker; there is no Git provider connector.
+- **Attack paths.** Built from recorded relationships. Network reachability is not computed, so a path can be overstated.
+- **AI red team.** Single-turn tests; no multi-turn, multimodal or adaptive attacks.
+- **Verification.** Not yet exercised against real AWS, Jira, GitHub, GitLab, Slack or Teams accounts, or live Claude, OpenAI or Gemini APIs.
+- **Scale.** Exercised with hundreds of assets per organization; no load tests yet.
 
 ## Roadmap
 
-1. OIDC single sign-on and SCIM provisioning.
-2. Azure and GCP native connectors; AWS coverage for Lambda, ELB and Secrets Manager.
-3. Git provider connectors with clone-and-analyse in an isolated worker.
-4. Kubernetes cluster inventory and RBAC analysis.
-5. Multi-turn AI red-team tests and an agent-harness target.
-6. Network-reachability-aware attack paths.
-7. Bulk NVD mirror and vendor advisory ingestion.
+1. OIDC single sign-on and SCIM
+2. Azure and Google Cloud connectors; broader AWS coverage
+3. Git provider connectors with isolated clone-and-analyse
+4. Kubernetes inventory and RBAC analysis
+5. Multi-turn AI red-team tests and agent-harness targets
+6. Reachability-aware attack paths
 
-## Contribution guidelines
+---
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Security issues: [SECURITY.md](SECURITY.md).
+## Documentation
+
+| Guide | Contents |
+| --- | --- |
+| [Architecture](docs/architecture.md) | Components, request path, data model, finding lifecycle, risk engine, jobs |
+| [Deployment](docs/deployment.md) | TLS, secrets, scaling, scanner images, client addresses, backup and recovery |
+| [Security](docs/security.md) | Threat model, sessions, tenant isolation, key management, assessment safety, known gaps |
+| [Integrations](docs/integrations.md) | Every connector, required permissions, CI/CD ingestion |
+| [AI security](docs/ai-security.md) | Discovery, posture rules, MCP, model files, red team |
+| [API](docs/api.md) | Authentication, conventions, resource map, a worked discovery-to-report example |
+| [Development](docs/development.md) | Local setup, conventions, adding an engine, tests, troubleshooting |
+| [Public demo](docs/demo.md) | Demo image, Render deployment, memory budget, restrictions |
+| [Changelog](CHANGELOG.md) | Release history |
+
+## Contributing and security
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), not through public issues.
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE).
+Licensed under the [Apache License 2.0](LICENSE).

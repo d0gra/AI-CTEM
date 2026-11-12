@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://ctem_app:ctem_app_dev@127.0.0.1:54329/ctem"
     migration_database_url: str = "postgresql+psycopg://ctem_owner:ctem_owner_dev@127.0.0.1:54329/ctem"
     db_pool_size: int = 10
+    db_max_overflow: int = 10
     redis_url: str | None = None
 
     # Secrets
@@ -79,6 +80,7 @@ class Settings(BaseSettings):
 
     # Workers
     worker_concurrency: int = 4
+    embedded_worker: bool = False  # run the job worker inside the API process (single-container deployments)
     worker_poll_seconds: float = 2.0
     job_max_attempts: int = 3
     job_stale_after_seconds: int = 300
@@ -95,6 +97,9 @@ class Settings(BaseSettings):
     demo_mode: bool = False
     demo_password: str = "Demo-CTEM-2026!"  # noqa: S105  (published on purpose; used only when demo_mode is on)
     demo_sample_data: bool = True
+    # Feeds synchronised when the demo starts. MITRE ATT&CK (a 45 MB download) is left out by default so
+    # a small instance starts quickly; add "mitre_attack" to include it.
+    demo_intel_sources: str = "cisa_kev,epss,mitre_atlas"
 
     # Observability
     log_level: str = "INFO"

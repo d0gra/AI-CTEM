@@ -86,27 +86,51 @@ def schedule_tick() -> dict:
     return stats
 
 
+def _peak_rss_mb() -> int:
+    """Highest resident memory of this process so far (sizing aid for small deployments)."""
+    import resource
+    import sys
+
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return int(peak / 1048576 if sys.platform == "darwin" else peak / 1024)  # bytes on macOS, KiB on Linux
+
+
 def _execute(job) -> None:
     RUNNING.inc()
     try:
         outcome = queue.execute(job)
         JOBS.labels(job.type, outcome).inc()
-        log.info("job_finished", job_id=str(job.id), type=job.type, outcome=outcome, organization_id=str(job.organization_id))
+        log.info("job_finished", job_id=str(job.id), type=job.type, outcome=outcome, organization_id=str(job.organization_id),
+                 process_peak_rss_mb=_peak_rss_mb())
     finally:
         RUNNING.dec()
 
 
 def main() -> None:
     configure_logging()
-    settings = get_settings()
-    worker_id = f"{socket.gethostname()}:{os.getpid()}"
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.set())
     metrics_port = int(os.environ.get("CTEM_WORKER_METRICS_PORT", "0"))
     if metrics_port:
         start_http_server(metrics_port)
-    log.info("worker_started", worker_id=worker_id, concurrency=settings.worker_concurrency, job_types=queue.registered_job_types())
+    run(stop)
+
+
+def start_embedded() -> tuple[threading.Event, threading.Thread]:
+    """Run the worker loop on a thread of the current process (CTEM_EMBEDDED_WORKER). For small
+    single-container deployments: one Python process instead of two roughly halves memory use."""
+    stop = threading.Event()
+    thread = threading.Thread(target=run, args=(stop,), name="embedded-worker", daemon=True)
+    thread.start()
+    return stop, thread
+
+
+def run(stop: threading.Event) -> None:
+    settings = get_settings()
+    worker_id = f"{socket.gethostname()}:{os.getpid()}"
+    log.info("worker_started", worker_id=worker_id, concurrency=settings.worker_concurrency, job_types=queue.registered_job_types(),
+             embedded=threading.current_thread() is not threading.main_thread())
     pool = ThreadPoolExecutor(max_workers=settings.worker_concurrency, thread_name_prefix="job")
     slots = threading.Semaphore(settings.worker_concurrency)
     last_tick = 0.0

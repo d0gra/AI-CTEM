@@ -69,3 +69,22 @@ def test_guards_protect_shared_accounts_and_block_active_testing(app, demo_on):
 
     # Addresses are not recorded where other visitors could read them.
     assert all(s["ip_address"] is None for s in admin.ok("GET", "/auth/sessions"))
+
+
+def test_embedded_worker_runs_jobs_inside_the_api_process(monkeypatch, org):
+    import threading
+    import time
+
+    from app.main import create_app
+
+    monkeypatch.setattr(get_settings(), "embedded_worker", True)
+    monkeypatch.setattr(get_settings(), "worker_poll_seconds", 0.2)
+    job = org.ok("POST", "/risk/recalculate")
+    with TestClient(create_app()):
+        assert any(t.name == "embedded-worker" for t in threading.enumerate())
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline and org.ok("GET", f"/jobs/{job['job_id']}")["state"] not in ("succeeded", "failed", "dead"):
+            time.sleep(0.2)
+        assert org.ok("GET", f"/jobs/{job['job_id']}")["state"] == "succeeded"
+    time.sleep(0.5)
+    assert not any(t.name == "embedded-worker" and t.is_alive() for t in threading.enumerate())

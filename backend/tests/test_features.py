@@ -415,3 +415,13 @@ def test_recording_posture_resolves_gap_findings(org, drain):
     drain()
     assert {"ai.posture.unrecorded", "ai.rag.vector_db_exposed"} <= rules("remediated")
     assert not {"ai.posture.unrecorded", "ai.rag.vector_db_exposed"} & rules("new")
+
+
+def test_streaming_array_decoder_matches_json_loads():
+    from app.integrations.intel.sources import iter_array_items
+
+    objects = [{"type": "attack-pattern", "id": i, "description": "naïve “quoted” " + "x" * (i * 37 % 4000)} for i in range(500)]
+    data = json.dumps({"type": "bundle", "id": "b", "objects": objects}, ensure_ascii=False).encode()
+    for chunk in (7, 333, 1 << 12):  # small chunks split objects and multi-byte characters
+        assert list(iter_array_items(data, "objects", chunk=chunk)) == objects
+    assert list(iter_array_items(b'{"objects": [ ]}', "objects")) == []

@@ -5,14 +5,16 @@ OpenAI v1, vLLM, Ollama, NVIDIA NIM, LiteLLM), Gemini and arbitrary application 
 called over HTTP through the SSRF-guarded client.
 """
 
+from __future__ import annotations
+
 import json
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
-import anthropic
 import httpx
 from pydantic import BaseModel, Field, HttpUrl, model_validator
 
+from app.core.lazy import lazy_import
 from app.core.net import safe_fetch
 from app.integrations.base import (
     ApiError,
@@ -22,6 +24,8 @@ from app.integrations.base import (
     register_connector,
     run_test,
 )
+
+anthropic = lazy_import("anthropic")  # loaded on first use
 
 ANTHROPIC_API_URL = "https://api.anthropic.com"
 DEFAULT_CLAUDE_MODEL = "claude-opus-5-5"
@@ -58,7 +62,7 @@ class LlmConfig(BaseModel):
     max_tokens_parameter: Literal["max_tokens", "max_completion_tokens"] = "max_tokens"
 
     @model_validator(mode="after")
-    def _check(self) -> "LlmConfig":
+    def _check(self) -> LlmConfig:
         if self.api_style == "anthropic":
             if self.base_url is not None and str(self.base_url).rstrip("/") != ANTHROPIC_API_URL:
                 raise ValueError("The anthropic style always uses https://api.anthropic.com; leave base_url empty")

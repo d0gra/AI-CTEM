@@ -60,3 +60,17 @@ cd frontend && pnpm test
 cd backend && uv run ruff check . && uv run alembic check && uv run pytest
 cd frontend && pnpm lint && pnpm typecheck && pnpm test && pnpm build
 ```
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| Migration fails: `Application role ctem_app does not exist` | Create the owner and runtime roles (see `scripts/dev-db.sh` or `infrastructure/docker/postgres/10-roles.sh`), or set `CTEM_APP_DB_ROLE`. |
+| Sign-in succeeds but every request returns 401 over plain HTTP | The session cookie is `Secure`. Use HTTPS, or set `CTEM_COOKIE_SECURE=false` for local use. |
+| `CSRF token missing or invalid` from a script | Scripts should send `Authorization: Bearer <access_token>` instead of the cookie. |
+| Assessment stays *queued* | No worker is running, or the organization is at `CTEM_MAX_RUNNING_JOBS_PER_ORG`. |
+| `Target ... is not covered by an authorized scope entry` | Add the target under Administration → Authorized scope. Active engines also need *active testing*. |
+| `Destination address ... is not publicly routable` | Private targets need both the scope entry's *private network* flag and `CTEM_ALLOW_PRIVATE_TARGETS=true` on API and workers. |
+| `Required tool 'trivy' is not installed on this worker` | Install the binary in the worker image; the engine list shows what each worker has. |
+| PostgreSQL refuses to start on macOS: `postmaster became multithreaded` | Start it with `LC_ALL=en_US.UTF-8` (handled by `scripts/dev-db.sh`). |
+| Registration rejects an address at `.test` or `.example` | Reserved domains fail email validation; use a real domain or `example.com`. |

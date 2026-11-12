@@ -5,7 +5,7 @@ All notable changes are recorded here. The format follows Keep a Changelog; vers
 ## [0.3.0] - 2026-11-12
 
 ### Added
-- Public demo image (`Dockerfile.demo`, `render.yaml`): PostgreSQL, API, worker and web in one container, a demo organization with one account per role listed on the sign-in page, and a generated sample repository analysed by the real engines. Demo mode refuses active testing and stored credentials, protects the shared accounts, and does not record visitor addresses.
+- Public demo image (`Dockerfile.demo`, `render.yaml`) that fits Render's free plan (512 MB; measured peak about 370 MB): PostgreSQL, API, worker and web in one container, a demo organization with one account per role listed on the sign-in page, and a generated sample repository analysed by the real engines. Demo mode refuses active testing and stored credentials, protects the shared accounts, and does not record visitor addresses.
 - CI/CD ingestion: upload-only pipeline tokens, `POST /api/v1/ci/ingest` with repository, branch, commit and pipeline context, a severity gate that can fail the build, generated jobs for GitHub Actions, GitLab CI, Jenkins and shell, and an upload history for pipeline and manual uploads.
 - AI Security: Add AI asset, a structured editor for agent tools and capabilities, and links that open an asset's posture form directly.
 - Continuous AI posture review: runs when AI assets are added or changed, after assessments that touch AI assets, and daily. Unrecorded controls on exposed or production AI assets are reported (`ai.posture.unrecorded`).
@@ -15,6 +15,7 @@ All notable changes are recorded here. The format follows Keep a Changelog; vers
 - Search, filters, sorting and page of the main tables are kept in the address bar, so views can be bookmarked and deep links such as `/findings?source=import:trivy` work.
 
 ### Changed
+- Lower memory use: `CTEM_EMBEDDED_WORKER` runs the job worker inside the API process; the Anthropic SDK and boto3 load on first use; the MITRE ATT&CK bundle is decoded one object at a time instead of all at once; `CTEM_DB_MAX_OVERFLOW` sets the connection pool overflow; finished jobs log the process's peak memory.
 - Scanner uploads are no longer listed as assessments.
 - AI posture findings are resolved when the recorded configuration no longer meets the rule; re-observed findings take the latest title and description.
 - Labels keep acronyms ("LLM endpoint", "AI application"); form controls honour width and height overrides, so table filters sit on one row.
