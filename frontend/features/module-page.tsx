@@ -9,8 +9,8 @@ import { AssessmentsPanel } from "./assessments";
 import { FindingsTable } from "./findings-table";
 
 /** Shared layout for security modules: open-finding counts, the module's assessments and its findings. */
-export function ModulePage({ title, description, module, domains, allowImport, children }: {
-  title: string; description: string; module: string; domains: string[]; allowImport?: boolean; children?: ReactNode;
+export function ModulePage({ title, description, module, domains, allowImport, cli, children }: {
+  title: string; description: string; module: string; domains: string[]; allowImport?: boolean; cli?: boolean; children?: ReactNode;
 }) {
   const { data } = useGet<Obj>("/dashboard/overview");
   const byDomain: Record<string, number> = data?.findings?.by_domain ?? {};
@@ -24,7 +24,7 @@ export function ModulePage({ title, description, module, domains, allowImport, c
       </div>
       <div className="space-y-4">
         {children}
-        <AssessmentsPanel module={module} allowImport={allowImport} />
+        <AssessmentsPanel module={module} allowImport={allowImport} cli={cli} />
         <FindingsTable params={{ domain: domains }} />
       </div>
     </>

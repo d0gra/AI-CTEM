@@ -15,6 +15,7 @@ One-click sign-in for every role, no sign-up needed · password `Demo-CTEM-2026!
 [![CI](https://github.com/d0gra/AI-CTEM/actions/workflows/ci.yml/badge.svg)](https://github.com/d0gra/AI-CTEM/actions/workflows/ci.yml)
 ![Version](https://img.shields.io/badge/version-0.3.0-informational)
 ![License](https://img.shields.io/badge/license-MIT-blue)
+[![PyPI](https://img.shields.io/pypi/v/aictem?label=aictem%20CLI&logo=pypi&logoColor=white&color=3775A9)](https://pypi.org/project/aictem/)
 ![Python](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
@@ -23,6 +24,19 @@ One-click sign-in for every role, no sign-up needed · password `Demo-CTEM-2026!
 [Live demo](https://ai-ctem.onrender.com/) · [Overview](#overview) · [Capabilities](#capabilities) · [AI security](#ai-security) · [Architecture](#architecture) · [Security model](#security-model) · [Deploy](#deployment-options) · [CLI](#aictem-cli-repository-and-ai-discovery) · [Integrations](#integrations) · [Docs](#documentation)
 
 </div>
+
+---
+
+> ### Scan a repository right now, without deploying anything
+>
+> ```bash
+> pip install aictem && aictem discover .
+> ```
+>
+> **`aictem`** is this platform's discovery CLI, on [PyPI](https://pypi.org/project/aictem/). From inside a repository it finds AI providers and SDKs,
+> agents and the tools they can call, RAG pipelines, vector stores, MCP servers and clients, model files, dependencies, containers, IaC and
+> committed secrets. The standard library is its only dependency, so it runs anywhere Python 3.11 does.
+> [What it finds and how →](#aictem-cli-repository-and-ai-discovery)
 
 ---
 
@@ -228,12 +242,28 @@ All settings are `CTEM_`-prefixed environment variables. The full list with comm
 
 `aictem` runs where the code lives, on a laptop or in a CI job, and inventories a repository from the inside. Python's standard library is its only dependency.
 
+[![PyPI](https://img.shields.io/pypi/v/aictem?logo=pypi&logoColor=white&color=3775A9)](https://pypi.org/project/aictem/)
+[![Python](https://img.shields.io/pypi/pyversions/aictem?logo=python&logoColor=white)](https://pypi.org/project/aictem/)
+![Dependencies](https://img.shields.io/badge/dependencies-none-2ea44f)
+
 ```bash
-pipx install aictem                              # or: uv tool install aictem
-aictem discover .                                  # terminal summary of assets and findings
-aictem discover . -f sarif -o aictem.sarif           # for GitHub code scanning
-aictem discover . --upload --gate high             # send to the platform (CTEM_URL, CTEM_CI_TOKEN)
+pip install aictem           # into the current environment or virtualenv
+pipx install aictem          # isolated, and on your PATH (recommended)
+uv tool install aictem       # the uv equivalent
+pipx run aictem discover .   # run it once without installing, for CI
 ```
+
+```bash
+aictem discover .                                 # terminal summary of assets and findings
+aictem discover . --all                           # every asset and finding, not just the top of each group
+aictem discover . --approved-providers openai     # report any other model provider as shadow AI
+aictem discover . --vulns                         # known vulnerabilities for pinned packages, via osv.dev
+aictem discover . -f sarif -o aictem.sarif        # for GitHub code scanning
+aictem discover . -f json -o inventory.json       # full inventory; upload this to the platform
+aictem discover . --upload --gate high            # send it straight there (CTEM_URL, CTEM_CI_TOKEN)
+```
+
+Inside the platform, the same commands are on **AI Security → Discovery and assessment**, next to the Import button that accepts the inventory.
 
 | Finds | How |
 | --- | --- |

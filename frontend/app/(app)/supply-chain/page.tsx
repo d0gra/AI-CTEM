@@ -10,6 +10,7 @@ export default function SupplyChainPage() {
       module="supply_chain"
       domains={["supply_chain", "container", "iac", "secrets"]}
       allowImport
+      cli
     />
   );
 }

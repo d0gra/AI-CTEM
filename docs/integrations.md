@@ -15,8 +15,26 @@ Common behaviour (`HttpApi`): SSRF-guarded transport, bounded retries with backo
 
 ## Scanners
 
+### aictem, the discovery CLI
+
+`aictem` is this project's own CLI, published on [PyPI](https://pypi.org/project/aictem/). Unlike every other tool below it runs
+*inside* a repository, on a developer's machine or in a CI job, which is the only place the AI side of a codebase is visible:
+provider SDKs, agents and the tools they can call, RAG pipelines, MCP servers and clients, and model files.
+
+```bash
+pip install aictem                            # or: pipx install aictem / uv tool install aictem
+aictem discover . -f json -o inventory.json   # then upload inventory.json, or:
+aictem discover . --upload --gate high        # send it directly (CTEM_URL, CTEM_CI_TOKEN)
+```
+
+It has no dependencies beyond the standard library, never loads model files, and never transmits a secret value.
+Full reference: [cli/README.md](../cli/README.md).
+
+### Report formats
+
 | Tool | Execution | Import format | Required on worker |
 | --- | --- | --- | --- |
+| [**aictem CLI**](../cli/README.md) | In a repository checkout, not on a worker | `aictem discover --format json` inventory (`aictem-inventory/1`): repository, dependency, container, cloud, CI and AI assets with relationships and findings. Package versions are checked against OSV on import; agent tools and MCP server details feed the AI posture review | — |
 | Nmap | `nmap -sT -Pn -n` with a rate cap; targets resolved and validated before the scan | XML (`-oX`) | `nmap` |
 | Nuclei | `nuclei -jsonl -duc -ni`; `dos`, `fuzz`, `intrusive` tags excluded by default | JSON / JSONL | `nuclei` and templates |
 | Trivy | `trivy fs` (vuln, misconfig, secret) | JSON (`--format json`), including image scans | `trivy` |
@@ -28,7 +46,6 @@ Common behaviour (`HttpApi`): SSRF-guarded transport, bounded retries with backo
 | Prowler | — | OCSF JSON (v4+) | — |
 | Any SARIF 2.1.0 producer | — | SARIF | — |
 | SBOM | — | CycloneDX JSON, SPDX JSON (components checked against OSV) | — |
-| [aictem CLI](../cli/README.md) | — | `aictem discover --format json` inventory (`aictem-inventory/1`): repository, dependency, container, cloud, CI and AI assets with relationships and findings. Package versions are checked against OSV on import; agent tools and MCP server details feed the AI posture review | — |
 
 A file in the wrong format fails the import with a specific message rather than importing nothing. Secret values in Gitleaks reports are dropped at parse time. Reports reach the platform two ways:
 

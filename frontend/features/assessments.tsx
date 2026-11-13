@@ -9,6 +9,7 @@ import { relativeTime, titleCase } from "@/lib/format";
 import { can, useAction, useGet, useMe } from "@/lib/hooks";
 import type { Obj } from "@/types/api";
 import { UploadHistory } from "@/features/ci";
+import { DiscoveryCliCard } from "@/features/discovery-cli";
 import { useQueryClient } from "@tanstack/react-query";
 
 /** Renders inputs for an engine's JSON-schema configuration (booleans, numbers, strings, string lists). */
@@ -174,7 +175,7 @@ export function ImportDialog({ open, onClose, initialFormat = "trivy" }: { open:
         {error && <Alert tone="critical">{error}</Alert>}
         <Field label="Format">
           <Select value={format} onChange={(e) => setFormat(e.target.value)}>
-            {formats.map((f) => <option key={f} value={f}>{f === "sbom" ? "SBOM (CycloneDX / SPDX JSON)" : f === "prowler" ? "Prowler (OCSF JSON)" : f === "aictem" ? "CTEM CLI inventory (aictem discover)" : titleCase(f)}</option>)}
+            {formats.map((f) => <option key={f} value={f}>{f === "sbom" ? "SBOM (CycloneDX / SPDX JSON)" : f === "prowler" ? "Prowler (OCSF JSON)" : f === "aictem" ? "aictem CLI inventory (aictem discover -f json)" : titleCase(f)}</option>)}
           </Select>
         </Field>
         <Alert>To send results on every build instead, use a pipeline token: <Link href="/integrations?tab=ci" className="text-accent hover:underline">Integrations → CI/CD pipelines</Link>.</Alert>
@@ -194,14 +195,15 @@ export function ImportDialog({ open, onClose, initialFormat = "trivy" }: { open:
 }
 
 const MODULE_FORMATS: Record<string, string[] | undefined> = {
-  web_api: ["zap", "nuclei"], supply_chain: ["trivy", "grype", "semgrep", "gitleaks", "sbom", "sarif"], cloud: ["checkov", "prowler"],
-  attack_surface: ["nmap", "nuclei"],
+  ai_security: ["aictem", "sarif"], web_api: ["zap", "nuclei"], cloud: ["checkov", "prowler"], attack_surface: ["nmap", "nuclei"],
+  supply_chain: ["aictem", "trivy", "grype", "semgrep", "gitleaks", "sbom", "sarif"],
 };
 
-export function AssessmentsPanel({ module, allowImport }: { module: string; allowImport?: boolean }) {
+export function AssessmentsPanel({ module, allowImport, cli }: { module: string; allowImport?: boolean; cli?: boolean }) {
   return (
     <div className="space-y-4">
       <AssessmentList module={module} allowImport={allowImport} />
+      {cli && <DiscoveryCliCard />}
       {allowImport && <UploadHistory formats={MODULE_FORMATS[module]} />}
     </div>
   );

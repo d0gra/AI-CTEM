@@ -270,7 +270,7 @@ function AISecurity() {
             { key: "exposure", label: "Exposure", options: ["internet", "internal", "private", "unknown"] },
           ]}
           toggles={[{ key: "unowned", label: "Unowned" }]}
-          empty={{ title: "No AI assets inventoried", body: "Add one with Add AI asset, or run a repository analysis, MCP probe or endpoint probe from the Discovery and assessment tab." }}
+          empty={{ title: "No AI assets inventoried", body: "Run `pipx install aictem && aictem discover .` in a repository and upload the inventory, or add an asset by hand. The Discovery and assessment tab also runs repository analysis, MCP probes and endpoint probes." }}
           columns={[
             { key: "name", header: "AI asset", className: "max-w-sm", render: (a) => <div className="min-w-0"><div className="truncate font-medium">{a.name}</div><div className="truncate font-mono text-xs text-muted">{a.identifier}</div></div> },
             { key: "type", header: "Type", render: (a) => <span className="text-xs">{titleCase(a.type)}</span> },
@@ -285,11 +285,11 @@ function AISecurity() {
         />
       )}
       {tab === "findings" && <FindingsTable params={{ domain: AI_DOMAINS }} />}
-      {tab === "assessments" && <AssessmentsPanel module="ai_security" />}
+      {tab === "assessments" && <AssessmentsPanel module="ai_security" allowImport cli />}
       {tab === "integrations" && (
         <DataTable<Obj>
           path="/ai/integrations"
-          empty={{ title: "No AI usage detected", body: "Run a repository analysis to detect AI SDKs, endpoints, credentials and configuration." }}
+          empty={{ title: "No AI usage detected", body: "Run a repository analysis, or scan a checkout with the aictem CLI (`pipx install aictem`), to detect AI SDKs, endpoints, credentials and configuration." }}
           columns={[
             { key: "provider", header: "Technology", render: (i) => <span className="font-medium">{titleCase(i.provider)}</span> },
             { key: "category", header: "Category", render: (i) => <span className="text-xs">{titleCase(i.category)}</span> },
