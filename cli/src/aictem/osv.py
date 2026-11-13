@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 import urllib.request
 
-from ctem_cli import __version__
-from ctem_cli.model import Finding
+from aictem import __version__
+from aictem.model import Finding
 
 QUERY_URL = "https://api.osv.dev/v1/querybatch"
 VULN_URL = "https://api.osv.dev/v1/vulns/"
@@ -14,13 +14,13 @@ SEVERITY = {"CRITICAL": "critical", "HIGH": "high", "MODERATE": "medium", "MEDIU
 
 
 def _post(url: str, body: dict) -> dict:
-    req = urllib.request.Request(url, data=json.dumps(body).encode(), headers={"Content-Type": "application/json", "User-Agent": f"ctem-cli/{__version__}"})
+    req = urllib.request.Request(url, data=json.dumps(body).encode(), headers={"Content-Type": "application/json", "User-Agent": f"aictem/{__version__}"})
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.loads(r.read())
 
 
 def _get(url: str) -> dict:
-    req = urllib.request.Request(url, headers={"User-Agent": f"ctem-cli/{__version__}"})
+    req = urllib.request.Request(url, headers={"User-Agent": f"aictem/{__version__}"})
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.loads(r.read())
 

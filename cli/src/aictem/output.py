@@ -1,4 +1,4 @@
-"""Report renderers: a terminal summary, JSON (the `ctem` upload format) and SARIF for code-scanning dashboards."""
+"""Report renderers: a terminal summary, JSON (the `aictem` upload format) and SARIF for code-scanning dashboards."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ import os
 import shutil
 import sys
 
-from ctem_cli import __version__
-from ctem_cli.model import AI_ASSET_TYPES, SEVERITY_RANK
+from aictem import __version__
+from aictem.model import AI_ASSET_TYPES, SEVERITY_RANK
 
 COLORS = {"critical": "\033[1;31m", "high": "\033[31m", "medium": "\033[33m", "low": "\033[36m", "info": "\033[2m", "bold": "\033[1m",
           "dim": "\033[2m", "green": "\033[32m", "reset": "\033[0m"}
@@ -36,7 +36,7 @@ def table(report: dict, stream=None, *, show_all: bool = False) -> None:
     w = stream.write
     s = report["summary"]
     t = report["target"]
-    w(c(f"ctem {__version__}", "bold") + c(f"  {t['repository']}" + (f" @ {t['branch']}" if t.get("branch") else "")
+    w(c(f"aictem {__version__}", "bold") + c(f"  {t['repository']}" + (f" @ {t['branch']}" if t.get("branch") else "")
                                               + (f" ({t['commit'][:10]})" if t.get("commit") else ""), "dim") + "\n")
     w(c(f"{s['files']} files, {s['source_files']} source, {s['manifests']} manifests, {s['model_files']} model files "
         f"in {report['duration_seconds']}s", "dim") + ("  " + c("(file limit reached; results are partial)", "medium") if s["truncated"] else "") + "\n\n")

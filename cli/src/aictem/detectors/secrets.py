@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import hashlib
 
-from ctem_cli.catalog import PLACEHOLDER, SECRET_PATTERNS
-from ctem_cli.detectors import Context, line_of
-from ctem_cli.model import Finding
+from aictem.catalog import PLACEHOLDER, SECRET_PATTERNS
+from aictem.detectors import Context, line_of
+from aictem.model import Finding
 
 EXAMPLE_FILES = (".example", ".sample", ".template", ".dist", "example.", "sample.")
 

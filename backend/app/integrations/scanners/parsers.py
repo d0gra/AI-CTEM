@@ -431,5 +431,5 @@ PARSERS: dict[str, Callable[[bytes, str | None], Iterator[ParsedFinding]]] = {
     "gitleaks": parse_gitleaks, "checkov": parse_checkov, "zap": parse_zap, "prowler": parse_prowler,
     "sarif": parse_sarif,
     # Handled by dedicated code paths in the import engine:
-    "nmap": None, "sbom": None, "ctem": None,  # type: ignore[dict-item]
+    "nmap": None, "sbom": None, "aictem": None,  # type: ignore[dict-item]
 }

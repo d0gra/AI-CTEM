@@ -148,7 +148,7 @@ export function ImportDialog({ open, onClose, initialFormat = "trivy" }: { open:
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const formats = ["ctem", "trivy", "grype", "nuclei", "semgrep", "gitleaks", "checkov", "zap", "prowler", "nmap", "sarif", "sbom"];
+  const formats = ["aictem", "trivy", "grype", "nuclei", "semgrep", "gitleaks", "checkov", "zap", "prowler", "nmap", "sarif", "sbom"];
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!file) return;
@@ -174,7 +174,7 @@ export function ImportDialog({ open, onClose, initialFormat = "trivy" }: { open:
         {error && <Alert tone="critical">{error}</Alert>}
         <Field label="Format">
           <Select value={format} onChange={(e) => setFormat(e.target.value)}>
-            {formats.map((f) => <option key={f} value={f}>{f === "sbom" ? "SBOM (CycloneDX / SPDX JSON)" : f === "prowler" ? "Prowler (OCSF JSON)" : f === "ctem" ? "CTEM CLI inventory (ctem discover)" : titleCase(f)}</option>)}
+            {formats.map((f) => <option key={f} value={f}>{f === "sbom" ? "SBOM (CycloneDX / SPDX JSON)" : f === "prowler" ? "Prowler (OCSF JSON)" : f === "aictem" ? "CTEM CLI inventory (aictem discover)" : titleCase(f)}</option>)}
           </Select>
         </Field>
         <Alert>To send results on every build instead, use a pipeline token: <Link href="/integrations?tab=ci" className="text-accent hover:underline">Integrations → CI/CD pipelines</Link>.</Alert>

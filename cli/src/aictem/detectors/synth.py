@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import re
 
-from ctem_cli.catalog import ASSET_TYPE, BY_KEY, HIGH_IMPACT
-from ctem_cli.detectors import Context
-from ctem_cli.model import Finding, Location
+from aictem.catalog import ASSET_TYPE, BY_KEY, HIGH_IMPACT
+from aictem.detectors import Context
+from aictem.model import Finding, Location
 
 TEST_PATH = re.compile(r"(^|/)(tests?|__tests__|spec|fixtures?|testdata|e2e)/|(^|/)test_[^/]*$|_test\.\w+$|\.(test|spec)\.\w+$|(^|/)conftest\.py$")
 
@@ -96,7 +96,7 @@ def build(ctx: Context, approved: set[str] | None) -> None:
             return len(parts) if rel.startswith(base.rsplit("/server", 1)[0]) else -1
         owner = max(local_servers, key=depth, default=None)
         if owner is None or depth(owner) < 0:
-            from ctem_cli.detectors.code import _mcp_server_impl
+            from aictem.detectors.code import _mcp_server_impl
 
             _mcp_server_impl(ctx, tool_rel, "", defined)
             continue

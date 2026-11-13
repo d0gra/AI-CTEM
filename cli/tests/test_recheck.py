@@ -2,9 +2,9 @@
 
 import json
 
-from ctem_cli import scan
-from ctem_cli.detectors.mcp import analyse_definition
-from ctem_cli.gitinfo import info
+from aictem import scan
+from aictem.detectors.mcp import analyse_definition
+from aictem.gitinfo import info
 
 
 def run(tmp_path, files: dict[str, str | bytes], **kw):

@@ -11,7 +11,7 @@ import type { Obj } from "@/types/api";
 
 /** How to produce each supported report in a pipeline. `file` is what the ingest step uploads. */
 const PRODUCERS: Record<string, { label: string; run: string; file: string }> = {
-  ctem: { label: "CTEM CLI: repository and AI asset discovery", run: "pipx run --spec \"git+https://github.com/d0gra/AI-CTEM#subdirectory=cli\" ctem discover . -f json -o ctem.json", file: "ctem.json" },
+  aictem: { label: "aictem CLI: repository and AI asset discovery", run: "pipx run aictem discover . -f json -o aictem.json", file: "aictem.json" },
   trivy: { label: "Trivy", run: "trivy fs --scanners vuln,secret,misconfig --format json --output trivy.json .", file: "trivy.json" },
   grype: { label: "Grype", run: "grype dir:. -o json --file grype.json", file: "grype.json" },
   semgrep: { label: "Semgrep", run: "semgrep scan --config auto --json --output semgrep.json", file: "semgrep.json" },
@@ -243,7 +243,7 @@ function Tokens() {
 
 function Snippets() {
   const [provider, setProvider] = useState<Provider>("github_actions");
-  const [format, setFormat] = useState("ctem");
+  const [format, setFormat] = useState("aictem");
   const [failOn, setFailOn] = useState("high");
   const origin = useSyncExternalStore(() => () => {}, () => window.location.origin, () => "https://ctem.example.com");
   const text = snippet(provider, format, failOn, origin);

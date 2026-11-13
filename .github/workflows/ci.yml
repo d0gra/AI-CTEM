@@ -54,7 +54,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv run --python ${{ matrix.python }} --with pytest pytest -q
       - name: Scan this repository with the CLI
-        run: uv run --python ${{ matrix.python }} ctem discover .. --format sarif --output ctem.sarif
+        run: uv run --python ${{ matrix.python }} aictem discover .. --format sarif --output aictem.sarif
 
   frontend:
     runs-on: ubuntu-latest

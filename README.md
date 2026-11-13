@@ -20,7 +20,7 @@ One-click sign-in for every role, no sign-up needed · password `Demo-CTEM-2026!
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)
 
-[Live demo](https://ai-ctem.onrender.com/) · [Overview](#overview) · [Capabilities](#capabilities) · [AI security](#ai-security) · [Architecture](#architecture) · [Security model](#security-model) · [Deploy](#deployment-options) · [CLI](#ctem-cli-repository-and-ai-discovery) · [Integrations](#integrations) · [Docs](#documentation)
+[Live demo](https://ai-ctem.onrender.com/) · [Overview](#overview) · [Capabilities](#capabilities) · [AI security](#ai-security) · [Architecture](#architecture) · [Security model](#security-model) · [Deploy](#deployment-options) · [CLI](#aictem-cli-repository-and-ai-discovery) · [Integrations](#integrations) · [Docs](#documentation)
 
 </div>
 
@@ -51,8 +51,8 @@ SCOPE ─► DISCOVER ─► INVENTORY ─► ASSESS ─► PRIORITIZE ─► AT
 | --- | --- |
 | **Assessment engines** | 17 (discovery, web and API, network, code and dependencies, cloud, AI) |
 | **Connectors** | 26 (11 scanners, 6 threat-intel feeds, 3 ticketing systems, 3 notification channels, 2 AI, 1 cloud) |
-| **Scanner report formats** | 12 (including the `ctem` CLI inventory), uploaded by hand or from CI/CD pipelines with a build gate |
-| **CLI** | `ctem discover`: dependency-free repository and AI asset discovery for laptops and CI, with SARIF output and upload |
+| **Scanner report formats** | 12 (including the `aictem` CLI inventory), uploaded by hand or from CI/CD pipelines with a build gate |
+| **CLI** | `aictem discover`: dependency-free repository and AI asset discovery for laptops and CI, with SARIF output and upload |
 | **Asset model** | 33 asset types (11 AI-specific) and 15 relationship types |
 | **Access control** | 9 built-in roles, 33 permissions, custom roles, TOTP MFA |
 | **Governance** | 13 default policies with exceptions; 10 report types in PDF, XLSX, CSV and JSON |
@@ -224,15 +224,15 @@ All settings are `CTEM_`-prefixed environment variables. The full list with comm
 
 ---
 
-## ctem CLI: repository and AI discovery
+## aictem CLI: repository and AI discovery
 
-`ctem` runs where the code lives, on a laptop or in a CI job, and inventories a repository from the inside. Python's standard library is its only dependency.
+`aictem` runs where the code lives, on a laptop or in a CI job, and inventories a repository from the inside. Python's standard library is its only dependency.
 
 ```bash
-pipx install ./cli
-ctem discover .                                  # terminal summary of assets and findings
-ctem discover . -f sarif -o ctem.sarif           # for GitHub code scanning
-ctem discover . --upload --gate high             # send to the platform (CTEM_URL, CTEM_CI_TOKEN)
+pipx install aictem                              # or: uv tool install aictem
+aictem discover .                                  # terminal summary of assets and findings
+aictem discover . -f sarif -o aictem.sarif           # for GitHub code scanning
+aictem discover . --upload --gate high             # send to the platform (CTEM_URL, CTEM_CI_TOKEN)
 ```
 
 | Finds | How |
@@ -320,7 +320,7 @@ backend/app/
 backend/migrations/  Alembic migrations, including row-level security policies and grants
 frontend/            Next.js app: 20 product areas, shared data table, feature components
 infrastructure/      Kubernetes manifests, Postgres role bootstrap, demo entrypoint, monitoring
-cli/                 ctem discover: dependency-free repository and AI asset discovery
+cli/                 aictem discover: dependency-free repository and AI asset discovery
 docs/                architecture, deployment, security, integrations, AI security, API, demo, ADRs
 ```
 
@@ -360,7 +360,7 @@ docs/                architecture, deployment, security, integrations, AI securi
 | [API](docs/api.md) | Authentication, conventions, resource map, a worked discovery-to-report example |
 | [Development](docs/development.md) | Local setup, conventions, adding an engine, tests, troubleshooting |
 | [Public demo](docs/demo.md) | Demo image, Render deployment, memory budget, restrictions |
-| [CLI](cli/README.md) | `ctem discover`: install, usage, what it finds, exit codes |
+| [CLI](cli/README.md) | `aictem discover`: install, usage, what it finds, exit codes |
 | [Changelog](CHANGELOG.md) | Release history |
 
 ## Contributing and security

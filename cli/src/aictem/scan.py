@@ -7,11 +7,11 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from ctem_cli import __version__, gitinfo
-from ctem_cli.catalog import MODEL_EXTENSIONS, MODEL_FILE_NAMES
-from ctem_cli.detectors import Context, code, deps, infra, mcp, models, secrets, synth
-from ctem_cli.model import AI_ASSET_TYPES, SCHEMA, Inventory, Location
-from ctem_cli.walker import Walker, read_text
+from aictem import __version__, gitinfo
+from aictem.catalog import MODEL_EXTENSIONS, MODEL_FILE_NAMES
+from aictem.detectors import Context, code, deps, infra, mcp, models, secrets, synth
+from aictem.model import AI_ASSET_TYPES, SCHEMA, Inventory, Location
+from aictem.walker import Walker, read_text
 
 SECRET_SCAN_SUFFIXES = {".py", ".js", ".ts", ".tsx", ".jsx", ".mjs", ".cjs", ".go", ".java", ".kt", ".rb", ".php", ".cs", ".rs", ".swift",
                         ".sh", ".bash", ".zsh", ".ps1", ".env", ".yaml", ".yml", ".json", ".toml", ".ini", ".cfg", ".conf", ".properties",
@@ -23,7 +23,7 @@ def run(root: Path, *, approved_providers: set[str] | None = None, secrets_enabl
     started = time.monotonic()
     root = root.resolve()
     if not root.is_dir():
-        raise SystemExit(f"ctem: {root} is not a directory")
+        raise SystemExit(f"aictem: {root} is not a directory")
     info = gitinfo.info(root)
     inv = Inventory()
     repo = inv.add("repository", info["identifier"], info["name"],
@@ -42,7 +42,7 @@ def run(root: Path, *, approved_providers: set[str] | None = None, secrets_enabl
         except Exception as exc:  # noqa: BLE001  (one odd file must not end the whole scan; it is reported instead)
             errors.append(f"{rel}: {type(exc).__name__}: {exc}"[:300])
             if len(errors) <= 5:
-                print(f"ctem: skipped {errors[-1]}", file=sys.stderr)
+                print(f"aictem: skipped {errors[-1]}", file=sys.stderr)
 
     counts["packages"] = packages.flush()
     synth.build(ctx, approved_providers)

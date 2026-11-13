@@ -2,10 +2,10 @@ import json
 
 from conftest import FAKE_OPENAI_KEY
 
-from ctem_cli import output, scan
-from ctem_cli.__main__ import main
-from ctem_cli.detectors.deps import purl
-from ctem_cli.gitinfo import normalise_remote
+from aictem import output, scan
+from aictem.__main__ import main
+from aictem.detectors.deps import purl
+from aictem.gitinfo import normalise_remote
 
 REPO = "github.com/acme/support-bot"
 
@@ -89,7 +89,7 @@ def test_sarif_and_exit_codes(repo, tmp_path, capsys):
     sarif = json.loads(out.read_text())
     assert sarif["version"] == "2.1.0" and sarif["runs"][0]["results"]
     assert main(["discover", str(repo), "-f", "json", "-o", str(tmp_path / "r.json"), "--fail-on", "high"]) == 1
-    assert json.loads((tmp_path / "r.json").read_text())["schema"] == "ctem-inventory/1"
+    assert json.loads((tmp_path / "r.json").read_text())["schema"] == "aictem-inventory/1"
     assert main(["discover", str(repo), "--no-secrets", "--exclude", ".env", "--fail-on", "critical", "-f", "json", "-o", str(tmp_path / "x.json")]) == 0
     assert main(["discover", str(repo)]) == 0 and "AI inventory" in capsys.readouterr().out
 

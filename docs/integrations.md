@@ -28,7 +28,7 @@ Common behaviour (`HttpApi`): SSRF-guarded transport, bounded retries with backo
 | Prowler | — | OCSF JSON (v4+) | — |
 | Any SARIF 2.1.0 producer | — | SARIF | — |
 | SBOM | — | CycloneDX JSON, SPDX JSON (components checked against OSV) | — |
-| [ctem CLI](../cli/README.md) | — | `ctem discover --format json` inventory (`ctem-inventory/1`): repository, dependency, container, cloud, CI and AI assets with relationships and findings. Package versions are checked against OSV on import; agent tools and MCP server details feed the AI posture review | — |
+| [aictem CLI](../cli/README.md) | — | `aictem discover --format json` inventory (`aictem-inventory/1`): repository, dependency, container, cloud, CI and AI assets with relationships and findings. Package versions are checked against OSV on import; agent tools and MCP server details feed the AI posture review | — |
 
 A file in the wrong format fails the import with a specific message rather than importing nothing. Secret values in Gitleaks reports are dropped at parse time. Reports reach the platform two ways:
 

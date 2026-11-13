@@ -9,9 +9,9 @@ import re
 import zipfile
 from pathlib import Path
 
-from ctem_cli.catalog import CODE_EXECUTION_FORMATS, MIN_MODEL_BYTES, MODEL_EXTENSIONS, MODEL_FILE_NAMES
-from ctem_cli.detectors import Context
-from ctem_cli.model import Finding, Location
+from aictem.catalog import CODE_EXECUTION_FORMATS, MIN_MODEL_BYTES, MODEL_EXTENSIONS, MODEL_FILE_NAMES
+from aictem.detectors import Context
+from aictem.model import Finding, Location
 
 MAX_SCAN_BYTES = 512 * 1024 * 1024
 DANGEROUS_MODULES = {

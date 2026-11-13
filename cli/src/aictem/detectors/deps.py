@@ -8,9 +8,9 @@ import tomllib
 import xml.etree.ElementTree as ET
 from urllib.parse import quote
 
-from ctem_cli.catalog import GO_INDEX, INTEGRATIONS, NPM_INDEX, PYPI_INDEX
-from ctem_cli.detectors import Context
-from ctem_cli.model import Location
+from aictem.catalog import GO_INDEX, INTEGRATIONS, NPM_INDEX, PYPI_INDEX
+from aictem.detectors import Context
+from aictem.model import Location
 
 PURL_TYPE = {"PyPI": "pypi", "npm": "npm", "Go": "golang", "crates.io": "cargo", "RubyGems": "gem", "Maven": "maven",
              "NuGet": "nuget", "Packagist": "composer"}

@@ -1,19 +1,39 @@
 [project]
-name = "ctem-cli"
+name = "aictem"
 version = "0.1.0"
-description = "Discover repository, dependency, container, cloud and AI assets and send them to the CTEM platform"
+description = "Discover repository, dependency, container, cloud and AI assets (providers, agents, RAG, MCP, models) from inside a repository"
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = []  # standard library only, so it runs in any CI image
+keywords = ["security", "ctem", "ai-security", "sbom", "mcp", "llm", "agents", "shadow-ai", "asset-discovery", "sarif"]
 classifiers = [
+  "Development Status :: 4 - Beta",
   "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Information Technology",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Security",
+  "Topic :: Software Development :: Quality Assurance",
+  "Typing :: Typed",
 ]
 
+[project.urls]
+Homepage = "https://github.com/d0gra/AI-CTEM"
+Documentation = "https://github.com/d0gra/AI-CTEM/blob/main/cli/README.md"
+Repository = "https://github.com/d0gra/AI-CTEM"
+Issues = "https://github.com/d0gra/AI-CTEM/issues"
+Changelog = "https://github.com/d0gra/AI-CTEM/blob/main/CHANGELOG.md"
+
 [project.scripts]
-ctem = "ctem_cli.__main__:main"
+aictem = "aictem.__main__:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
@@ -23,7 +43,10 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ctem_cli"]
+packages = ["src/aictem"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/", "tests/", "README.md", "LICENSE", "pyproject.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

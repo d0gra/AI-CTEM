@@ -1,4 +1,4 @@
-"""File discovery: walk a tree, skipping build output, dependencies and anything in .ctemignore."""
+"""File discovery: walk a tree, skipping build output, dependencies and anything in .aictemignore."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ class Walker:
         self.root = root.resolve()
         self.max_files = max_files
         self.ignores = list(extra_ignores or [])
-        ignore_file = self.root / ".ctemignore"
+        ignore_file = self.root / ".aictemignore"
         if ignore_file.is_file():
             self.ignores += [line.strip() for line in ignore_file.read_text(errors="replace").splitlines()
                              if line.strip() and not line.startswith("#")]

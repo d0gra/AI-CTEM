@@ -7,9 +7,9 @@ import json
 import re
 import tomllib
 
-from ctem_cli.catalog import MCP_CONFIG_NAMES, MCP_CONFIG_PARENTS, SECRET_PATTERNS
-from ctem_cli.detectors import Context
-from ctem_cli.model import Finding, Location
+from aictem.catalog import MCP_CONFIG_NAMES, MCP_CONFIG_PARENTS, SECRET_PATTERNS
+from aictem.detectors import Context
+from aictem.model import Finding, Location
 
 
 def is_mcp_config(rel: str) -> bool:

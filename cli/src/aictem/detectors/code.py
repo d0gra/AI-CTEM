@@ -9,7 +9,7 @@ import json
 import re
 from urllib.parse import urlsplit
 
-from ctem_cli.catalog import (
+from aictem.catalog import (
     CAPABILITY_MARKERS,
     ENV_INDEX,
     GO_INDEX,
@@ -25,8 +25,8 @@ from ctem_cli.catalog import (
     TECHS,
     is_reference_host,
 )
-from ctem_cli.detectors import Context, line_of
-from ctem_cli.model import Finding, Location
+from aictem.detectors import Context, line_of
+from aictem.model import Finding, Location
 
 CODE_SUFFIXES = {".py": "python", ".pyi": "python", ".js": "javascript", ".mjs": "javascript", ".cjs": "javascript", ".jsx": "javascript",
                  ".ts": "typescript", ".tsx": "typescript", ".mts": "typescript", ".cts": "typescript", ".go": "go", ".ipynb": "notebook"}
@@ -470,7 +470,7 @@ def _definition_from_text(body: str) -> dict:
 
 
 def _mcp_servers_in_code(ctx: Context, rel: str, text: str, spans: Spans, kind: str) -> None:
-    from ctem_cli.detectors.mcp import analyse_definition
+    from aictem.detectors.mcp import analyse_definition
 
     for m in MCP_DICT_ENTRY.finditer(text):
         if spans.in_comment(m.start()):

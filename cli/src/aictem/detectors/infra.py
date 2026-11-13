@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import re
 
-from ctem_cli.catalog import CFN_TYPES, IMAGE_INDEX, TERRAFORM_TYPES, resource_type
-from ctem_cli.detectors import Context, line_of
-from ctem_cli.model import Finding, Location
+from aictem.catalog import CFN_TYPES, IMAGE_INDEX, TERRAFORM_TYPES, resource_type
+from aictem.detectors import Context, line_of
+from aictem.model import Finding, Location
 
 FROM = re.compile(r"^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+AS\s+(\S+))?", re.IGNORECASE | re.MULTILINE)
 YAML_IMAGE = re.compile(r"^\s*-?\s*image:\s*['\"]?([^\s'\"#]+)", re.MULTILINE)

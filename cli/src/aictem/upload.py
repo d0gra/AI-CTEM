@@ -8,7 +8,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from ctem_cli import __version__
+from aictem import __version__
 
 CI_PROVIDERS = (("GITHUB_ACTIONS", "github_actions"), ("GITLAB_CI", "gitlab_ci"), ("JENKINS_URL", "jenkins"), ("TF_BUILD", "azure_pipelines"),
                 ("CIRCLECI", "circleci"), ("BITBUCKET_BUILD_NUMBER", "bitbucket"))
@@ -31,9 +31,9 @@ def send(report: dict, url: str, token: str, *, fail_on: str = "none", wait: boo
     endpoint = url.rstrip("/") + "/api/v1/ci/ingest?" + urllib.parse.urlencode(query)
     parts = urllib.parse.urlsplit(endpoint)
     if parts.scheme != "https" and not (parts.scheme == "http" and parts.hostname in ("localhost", "127.0.0.1", "::1")):
-        raise SystemExit("ctem: refusing to send a token over plain HTTP to a non-local address; use https://")
+        raise SystemExit("aictem: refusing to send a token over plain HTTP to a non-local address; use https://")
     request = urllib.request.Request(endpoint, data=json.dumps(report).encode(), method="POST", headers={
-        "Authorization": f"Bearer {token}", "Content-Type": "application/json", "User-Agent": f"ctem-cli/{__version__}"})
+        "Authorization": f"Bearer {token}", "Content-Type": "application/json", "User-Agent": f"aictem/{__version__}"})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return response.status, json.loads(response.read() or b"{}")
@@ -44,4 +44,4 @@ def send(report: dict, url: str, token: str, *, fail_on: str = "none", wait: boo
             body = {"error": {"message": exc.reason}}
         return exc.code, body
     except urllib.error.URLError as exc:
-        raise SystemExit(f"ctem: could not reach {url}: {exc.reason}") from exc
+        raise SystemExit(f"aictem: could not reach {url}: {exc.reason}") from exc

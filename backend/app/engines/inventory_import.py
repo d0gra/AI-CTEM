@@ -1,4 +1,4 @@
-"""Import of `ctem discover` inventories (report format "ctem", schema ctem-inventory/1).
+"""Import of `aictem discover` inventories (report format "aictem", schema aictem-inventory/1).
 
 The CLI runs where the code is (a developer machine or a CI job) and reports assets, relationships and
 findings. Everything is validated against the platform's own types before use; package versions are
@@ -17,7 +17,7 @@ from app.models import AIAgent, AIIntegration, MCPServer
 from app.models.asset import ASSET_TYPES, RELATIONSHIP_TYPES
 from app.models.finding import CONFIDENCES, FINDING_DOMAINS
 
-SCHEMA = "ctem-inventory/1"
+SCHEMA = "aictem-inventory/1"
 MAX_ASSETS, MAX_FINDINGS, MAX_RELATIONSHIPS = 25_000, 20_000, 50_000
 SEVERITIES = {"critical", "high", "medium", "low", "info"}
 AI_KEYS = {"provider", "framework", "managed"}
@@ -38,9 +38,9 @@ def parse(data: bytes) -> dict:
     try:
         doc = json.loads(data)
     except ValueError as exc:
-        raise ReportFormatError("Not a ctem inventory: the file is not JSON") from exc
+        raise ReportFormatError("Not an aictem inventory: the file is not JSON") from exc
     if not isinstance(doc, dict) or doc.get("schema") != SCHEMA:
-        raise ReportFormatError(f"Not a ctem inventory (expected schema {SCHEMA!r}; produce it with `ctem discover --format json`)")
+        raise ReportFormatError(f"Not an aictem inventory (expected schema {SCHEMA!r}; produce it with `aictem discover --format json`)")
     for key, limit in (("assets", MAX_ASSETS), ("findings", MAX_FINDINGS), ("relationships", MAX_RELATIONSHIPS)):
         if not isinstance(doc.get(key, []), list) or len(doc.get(key, [])) > limit:
             raise ReportFormatError(f"Inventory '{key}' must be a list of at most {limit} entries")
@@ -105,7 +105,7 @@ def ingest(ctx: EngineContext, data: bytes, target: str | None, source: str) -> 
         evidence = _clip(f.get("evidence") or {})
         where = {k: f[k] for k in ("file", "line") if f.get(k)}
         ctx.finding(FindingInput(
-            asset=asset, source=source, rule_id=str(f.get("rule_id") or "ctem.unknown")[:200], domain=f["domain"],
+            asset=asset, source=source, rule_id=str(f.get("rule_id") or "aictem.unknown")[:200], domain=f["domain"],
             title=str(f.get("title") or f.get("rule_id"))[:500], severity=f["severity"], description=str(f.get("description") or "")[:5000],
             remediation=str(f.get("remediation") or "")[:3000], confidence=f.get("confidence") if f.get("confidence") in CONFIDENCES else "firm",
             cwe=f.get("cwe"), owasp_llm=f.get("owasp_llm"), atlas_technique=f.get("atlas_technique"), nist_ai_rmf=f.get("nist_ai_rmf"),

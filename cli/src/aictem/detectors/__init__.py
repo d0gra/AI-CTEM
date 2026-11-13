@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ctem_cli.catalog import BY_KEY, Tech
-from ctem_cli.model import Asset, Inventory, Location
+from aictem.catalog import BY_KEY, Tech
+from aictem.model import Asset, Inventory, Location
 
 
 @dataclass

@@ -1,14 +1,14 @@
 """Inventory data model: assets, relationships and findings, merged as detectors report them.
 
 Asset types, relationship types and finding domains match the CTEM platform's, so a report can be
-uploaded unchanged (`ctem discover --upload`, or the `ctem` report format).
+uploaded unchanged (`aictem discover --upload`, or the `aictem` report format).
 """
 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 
-SCHEMA = "ctem-inventory/1"
+SCHEMA = "aictem-inventory/1"
 
 ASSET_TYPES = {
     "domain", "subdomain", "ip_address", "dns_record", "website", "http_service", "api", "api_endpoint", "certificate",
