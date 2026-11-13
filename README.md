@@ -20,7 +20,7 @@ One-click sign-in for every role, no sign-up needed · password `Demo-CTEM-2026!
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)
 
-[Live demo](https://ai-ctem.onrender.com/) · [Overview](#overview) · [Capabilities](#capabilities) · [AI security](#ai-security) · [Architecture](#architecture) · [Security model](#security-model) · [Deploy](#deployment-options) · [Integrations](#integrations) · [Docs](#documentation)
+[Live demo](https://ai-ctem.onrender.com/) · [Overview](#overview) · [Capabilities](#capabilities) · [AI security](#ai-security) · [Architecture](#architecture) · [Security model](#security-model) · [Deploy](#deployment-options) · [CLI](#ctem-cli-repository-and-ai-discovery) · [Integrations](#integrations) · [Docs](#documentation)
 
 </div>
 
@@ -51,12 +51,13 @@ SCOPE ─► DISCOVER ─► INVENTORY ─► ASSESS ─► PRIORITIZE ─► AT
 | --- | --- |
 | **Assessment engines** | 17 (discovery, web and API, network, code and dependencies, cloud, AI) |
 | **Connectors** | 26 (11 scanners, 6 threat-intel feeds, 3 ticketing systems, 3 notification channels, 2 AI, 1 cloud) |
-| **Scanner report formats** | 11, uploaded by hand or from CI/CD pipelines with a build gate |
+| **Scanner report formats** | 12 (including the `ctem` CLI inventory), uploaded by hand or from CI/CD pipelines with a build gate |
+| **CLI** | `ctem discover`: dependency-free repository and AI asset discovery for laptops and CI, with SARIF output and upload |
 | **Asset model** | 33 asset types (11 AI-specific) and 15 relationship types |
 | **Access control** | 9 built-in roles, 33 permissions, custom roles, TOTP MFA |
 | **Governance** | 13 default policies with exceptions; 10 report types in PDF, XLSX, CSV and JSON |
 | **API** | 121 REST paths (152 operations) with OpenAPI documentation |
-| **Quality gates** | 113 backend tests against real PostgreSQL, 26 frontend tests, lint, type checks, SAST and dependency audit in CI |
+| **Quality gates** | 115 backend tests against real PostgreSQL, 26 frontend tests, 8 CLI tests on Python 3.11 and 3.13, lint, type checks, SAST and dependency audit in CI |
 
 ---
 
@@ -223,6 +224,30 @@ All settings are `CTEM_`-prefixed environment variables. The full list with comm
 
 ---
 
+## ctem CLI: repository and AI discovery
+
+`ctem` runs where the code lives, on a laptop or in a CI job, and inventories a repository from the inside. Python's standard library is its only dependency.
+
+```bash
+pipx install ./cli
+ctem discover .                                  # terminal summary of assets and findings
+ctem discover . -f sarif -o ctem.sarif           # for GitHub code scanning
+ctem discover . --upload --gate high             # send to the platform (CTEM_URL, CTEM_CI_TOKEN)
+```
+
+| Finds | How |
+| --- | --- |
+| **AI providers and models** | SDK imports and dependencies (including LangChain, LlamaIndex and AI SDK integration packages), `provider:model` identifiers, endpoint URLs, environment variables, containers and IaC. Covers 51 providers, frameworks, vector stores and serving runtimes |
+| **Agents and their tools** | LangChain/LangGraph, Deep Agents, CrewAI, AutoGen, OpenAI Agents SDK, Pydantic AI, smolagents, Semantic Kernel, Google ADK, Strands, Vercel AI SDK and Mastra. Tools are attached to the agents that import them, classified by capability (payment, shell, file write, email, ...) and checked for an approval step |
+| **RAG and vector stores** | Vector store clients together with retrievers, loaders and embeddings |
+| **MCP** | Client configurations (Claude Desktop, Cursor, VS Code, Windsurf, Claude Code, ...), servers declared in code, and servers implemented in the repository with their registered tools |
+| **Models** | Pickle, PyTorch, safetensors, ONNX, GGUF and more, disassembled without loading; Hugging Face references and `trust_remote_code` |
+| **Everything else** | Packages from 8 ecosystems (21 manifest and lockfile formats), container images, Kubernetes, Terraform and CloudFormation resources, CI pipelines and committed secrets (values never stored) |
+
+Accuracy over volume: agent, tool, import and risky-flag patterns only count in real code, never inside strings or comments. AI usage seen only in tests, only as a transitive lockfile entry, or only as an environment variable is labelled as such, and doesn't classify the application. Uploaded inventories use the platform's identifiers and rules, so they merge with server-side analysis, feed the AI posture review, and have their package versions checked against OSV. Validated against the official MCP servers, a LangChain RAG application and the CrewAI examples. See [cli/README.md](cli/README.md).
+
+---
+
 ## Integrations
 
 Each integration states how it is used and what it was verified against during development.
@@ -274,6 +299,7 @@ Interactive documentation is served at `/api/docs`, and the schema at `/api/open
 ```bash
 cd backend  && uv run pytest                                  # 113 tests against a real PostgreSQL (no internet access)
 cd frontend && pnpm lint && pnpm typecheck && pnpm test && pnpm build
+cd cli      && uv run --with pytest pytest                    # 8 tests, standard library only
 ```
 
 CI runs ruff, mypy (advisory), pytest with coverage, `pip-audit`, ESLint, TypeScript, Vitest, a production build, `pnpm audit`, Semgrep SAST, and image builds with a demo-image smoke test.
@@ -294,6 +320,7 @@ backend/app/
 backend/migrations/  Alembic migrations, including row-level security policies and grants
 frontend/            Next.js app: 20 product areas, shared data table, feature components
 infrastructure/      Kubernetes manifests, Postgres role bootstrap, demo entrypoint, monitoring
+cli/                 ctem discover: dependency-free repository and AI asset discovery
 docs/                architecture, deployment, security, integrations, AI security, API, demo, ADRs
 ```
 
@@ -333,6 +360,7 @@ docs/                architecture, deployment, security, integrations, AI securi
 | [API](docs/api.md) | Authentication, conventions, resource map, a worked discovery-to-report example |
 | [Development](docs/development.md) | Local setup, conventions, adding an engine, tests, troubleshooting |
 | [Public demo](docs/demo.md) | Demo image, Render deployment, memory budget, restrictions |
+| [CLI](cli/README.md) | `ctem discover`: install, usage, what it finds, exit codes |
 | [Changelog](CHANGELOG.md) | Release history |
 
 ## Contributing and security

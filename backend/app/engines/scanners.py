@@ -355,6 +355,10 @@ def run_import(ctx: EngineContext) -> None:
             hosts = parsers.parse_nmap_hosts(data)
             ctx.stats["hosts_up"] = len(hosts)
             record_network_services(ctx, hosts, source)
+        elif config.format == "ctem":
+            from app.engines.inventory_import import ingest
+
+            ingest(ctx, data, config.target, source)
         elif config.format == "sbom":
             fmt, subject, components = parsers.parse_sbom(data)
             identifier = config.target or subject
@@ -405,6 +409,8 @@ _SCANNERS = [
     ("prowler", "Prowler", "upload", "Upload Prowler OCSF JSON output. Covers AWS, Azure, Google Cloud and Kubernetes posture checks."),
     ("sarif", "SARIF", "upload", "Upload SARIF 2.1.0 results from any static or dynamic analysis tool."),
     ("sbom", "Software bill of materials", "upload", "Upload CycloneDX or SPDX JSON; components are inventoried and checked against OSV."),
+    ("ctem", "CTEM CLI inventory", "upload", "Upload `ctem discover --format json` reports: repository, dependency, container, cloud, CI and AI "
+             "assets (providers, frameworks, agents, RAG, MCP, models) with relationships and findings. Package versions are checked against OSV."),
 ]
 for _key, _name, _mode, _desc in _SCANNERS:
     register_connector(ConnectorSpec(key=_key, name=_name, category="scanner", description=_desc, mode=_mode,

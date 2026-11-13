@@ -44,6 +44,18 @@ jobs:
       - name: Dependency vulnerabilities
         run: uvx pip-audit --strict --requirement <(uv export --frozen --no-dev --no-hashes --no-emit-project)
 
+  cli:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: cli } }
+    strategy:
+      matrix: { python: ["3.11", "3.13"] }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv run --python ${{ matrix.python }} --with pytest pytest -q
+      - name: Scan this repository with the CLI
+        run: uv run --python ${{ matrix.python }} ctem discover .. --format sarif --output ctem.sarif
+
   frontend:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: frontend } }
