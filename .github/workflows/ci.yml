@@ -81,7 +81,7 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
       - name: Static analysis
-        run: pipx run semgrep scan --config p/default --error --metrics off backend/app frontend/app frontend/components frontend/lib
+        run: pipx run semgrep scan --config p/default --error --metrics off backend/app frontend/app frontend/components frontend/lib cli/src
 
   images:
     runs-on: ubuntu-latest

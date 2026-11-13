@@ -25,7 +25,7 @@ def send(report: dict, url: str, token: str, *, fail_on: str = "none", wait: boo
     """Returns (HTTP status, response body). 412 means the server-side gate failed."""
     target = report["target"]
     provider = next((name for var, name in CI_PROVIDERS if os.environ.get(var)), "cli")
-    query = {k: v for k, v in {"format": "ctem", "repository": target.get("repository"), "branch": target.get("branch"),
+    query = {k: v for k, v in {"format": "aictem", "repository": target.get("repository"), "branch": target.get("branch"),
                                "commit": target.get("commit"), "provider": provider, "pipeline_url": pipeline_url(),
                                "fail_on": fail_on, "exit_code": "true", "wait": "true" if wait else "false"}.items() if v}
     endpoint = url.rstrip("/") + "/api/v1/ci/ingest?" + urllib.parse.urlencode(query)
@@ -35,7 +35,8 @@ def send(report: dict, url: str, token: str, *, fail_on: str = "none", wait: boo
     request = urllib.request.Request(endpoint, data=json.dumps(report).encode(), method="POST", headers={
         "Authorization": f"Bearer {token}", "Content-Type": "application/json", "User-Agent": f"aictem/{__version__}"})
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        # The scheme and host of `endpoint` are checked above; only https, or http to loopback, reaches this.
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
             return response.status, json.loads(response.read() or b"{}")
     except urllib.error.HTTPError as exc:
         try:

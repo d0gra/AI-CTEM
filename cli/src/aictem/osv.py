@@ -13,15 +13,16 @@ VULN_URL = "https://api.osv.dev/v1/vulns/"
 SEVERITY = {"CRITICAL": "critical", "HIGH": "high", "MODERATE": "medium", "MEDIUM": "medium", "LOW": "low"}
 
 
+# `url` in both helpers is one of the module constants above, never a value from the scanned repository.
 def _post(url: str, body: dict) -> dict:
     req = urllib.request.Request(url, data=json.dumps(body).encode(), headers={"Content-Type": "application/json", "User-Agent": f"aictem/{__version__}"})
-    with urllib.request.urlopen(req, timeout=30) as r:
+    with urllib.request.urlopen(req, timeout=30) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
         return json.loads(r.read())
 
 
 def _get(url: str) -> dict:
     req = urllib.request.Request(url, headers={"User-Agent": f"aictem/{__version__}"})
-    with urllib.request.urlopen(req, timeout=30) as r:
+    with urllib.request.urlopen(req, timeout=30) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
         return json.loads(r.read())
 
 

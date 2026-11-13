@@ -1,0 +1,19 @@
+# Secret-scanning rules for this repository: the defaults, plus an allowlist for the test fixtures.
+#
+# The detector tests must contain credential-shaped strings, because that is what they test: the
+# scanners in backend/tests and cli/tests are checked against values in each provider's real format.
+# Every such value is synthetic, and the tests assert that no value ever reaches a report (only a
+# prefix, a length and a fingerprint are stored).
+#
+# These paths are not unscanned: `aictem discover` reads test files too and reports credential-shaped
+# strings found in them, at reduced severity, so a real key committed to a fixture is still surfaced.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic credentials in detector test fixtures"
+targets = ["path"]
+paths = [
+  '''(^|/)cli/tests/.*''',
+  '''(^|/)backend/tests/.*''',
+]
