@@ -112,7 +112,7 @@ def to_sarif(report: dict) -> str:
         results.append({"ruleId": f["rule_id"], "level": SARIF_LEVEL[f["severity"]], "message": {"text": f["title"]}, "locations": [location],
                         "partialFingerprints": {"ctem/v1": f"{f['rule_id']}:{f.get('discriminator') or f.get('file') or ''}"}})
     doc = {"$schema": "https://json.schemastore.org/sarif-2.1.0.json", "version": "2.1.0",
-           "runs": [{"tool": {"driver": {"name": "ctem", "version": __version__, "informationUri": "https://github.com/d0gra/AI-CTEM",
+           "runs": [{"tool": {"driver": {"name": "aictem", "version": __version__, "informationUri": "https://github.com/d0gra/AI-CTEM",
                                          "rules": list(rules.values())}}, "results": results}]}
     return json.dumps(doc, indent=2) + "\n"
 

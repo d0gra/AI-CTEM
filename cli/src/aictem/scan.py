@@ -55,7 +55,7 @@ def run(root: Path, *, approved_providers: set[str] | None = None, secrets_enabl
         by_sev[f["severity"]] = by_sev.get(f["severity"], 0) + 1
     return {
         "schema": SCHEMA,
-        "tool": {"name": "ctem", "version": __version__},
+        "tool": {"name": "aictem", "version": __version__},
         "scanned_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "duration_seconds": round(time.monotonic() - started, 2),
         "target": {"path": str(root), "repository": info["identifier"], "branch": info["branch"], "commit": info["commit"], "remote": info["remote"]},

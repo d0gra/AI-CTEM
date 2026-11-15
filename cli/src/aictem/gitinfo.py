@@ -94,9 +94,16 @@ def info(root: Path) -> dict:
 
 
 def tracked_files(root: Path) -> set[str] | None:
-    """Paths git tracks, when git is available; used to mark untracked secrets as lower confidence."""
+    """Paths git tracks, when git is available; used to mark untracked secrets as lower confidence.
+
+    The repository being scanned is untrusted, and its .git/config can name programs for git to run
+    (core.fsmonitor runs on `ls-files`). Those settings are overridden on the command line, which takes
+    precedence over the repository's configuration, so listing files never executes anything from it."""
+    safe = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-c", "core.pager=cat", "-c", "core.sshCommand=false",
+            "-c", "protocol.allow=never"]
     try:
-        out = subprocess.run(["git", "-C", str(root), "ls-files", "-z"], capture_output=True, timeout=20, check=True).stdout
+        out = subprocess.run(["git", "-C", str(root), *safe, "ls-files", "-z"], capture_output=True, timeout=20, check=True,
+                             stdin=subprocess.DEVNULL, env={**os.environ, "GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0"}).stdout
     except (OSError, subprocess.SubprocessError):
         return None
     return {p for p in out.decode(errors="replace").split("\0") if p}
