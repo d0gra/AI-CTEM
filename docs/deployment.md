@@ -101,7 +101,7 @@ ghcr.io/d0gra/ai-ctem/{api,worker,web,demo}:main
 
 They are pushed only after the demo smoke test and the browser tests pass in the same job, so a broken image is never published, and only from `main` — a pull request is not given a token that can write packages. They carry no provenance or SBOM attestation and `latest` is never moved to them, so prefer a released version in production and use these for staging or for following `main`.
 
-**The first push creates the packages as private.** Until someone opens each package on GitHub and either makes it public or grants the deploying account read access, `docker pull` fails with `denied`, and a Kubernetes node needs an `imagePullSecret`.
+**The packages are public**, because `org.opencontainers.image.source` links them to this repository and they inherit its visibility, so any host can pull them without a credential (verified by an anonymous pull of each one). If you fork this into a private repository, or make a package private under **Package settings -> Change visibility**, a pull then needs a credential: a Kubernetes node needs an `imagePullSecret`, and `docker login ghcr.io` needs a token with `read:packages`.
 
 ## Upgrades
 
