@@ -6,11 +6,12 @@
 
 Discover what you own, assess it inside an authorized scope, rank findings by real-world risk, trace attack paths, and close the loop with verified remediation — for cloud, web, code and AI systems in one data model.
 
+<a href="https://d0gra.github.io/AI-CTEM/"><img alt="Product page" src="https://img.shields.io/badge/%F0%9F%93%84%20PRODUCT%20PAGE-d0gra.github.io%2FAI--CTEM-4f8cff?style=for-the-badge"></a>
 <a href="https://ai-ctem.onrender.com/"><img alt="Live demo" src="https://img.shields.io/badge/%E2%96%B6%20LIVE%20DEMO-ai--ctem.onrender.com-2ea44f?style=for-the-badge"></a>
 
-### [▶ Try the live demo → ai-ctem.onrender.com](https://ai-ctem.onrender.com/)
+### [What it does → d0gra.github.io/AI-CTEM](https://d0gra.github.io/AI-CTEM/) &nbsp;·&nbsp; [▶ Try it → ai-ctem.onrender.com](https://ai-ctem.onrender.com/)
 
-One-click sign-in for every role, no sign-up · password `Demo-CTEM-2026!` · the first visit after a quiet spell takes about a minute to wake the free instance
+The demo signs you in as any role in one click, no sign-up · password `Demo-CTEM-2026!` · the first visit after a quiet spell takes about a minute to wake the free instance
 
 [![CI](https://github.com/d0gra/AI-CTEM/actions/workflows/ci.yml/badge.svg)](https://github.com/d0gra/AI-CTEM/actions/workflows/ci.yml)
 ![Version](https://img.shields.io/badge/version-0.3.0-informational)
@@ -21,7 +22,7 @@ One-click sign-in for every role, no sign-up · password `Demo-CTEM-2026!` · th
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)
 
-[Demo](https://ai-ctem.onrender.com/) · [Overview](#overview) · [AI security](#ai-security) · [Architecture](#architecture) · [Deploy](#deploy) · [CLI](#the-aictem-cli) · [Docs](#documentation)
+[Product page](https://d0gra.github.io/AI-CTEM/) · [Demo](https://ai-ctem.onrender.com/) · [Overview](#overview) · [AI security](#ai-security) · [Architecture](#architecture) · [Deploy](#deploy) · [CLI](#the-aictem-cli) · [Docs](#documentation)
 
 </div>
 
@@ -318,6 +319,7 @@ Dockerfile           the production image; Dockerfile.demo is the separate publi
 | [Development](docs/development.md) | Local setup, conventions, adding an engine, tests, troubleshooting |
 | [Public demo](docs/demo.md) | Demo image, Render deployment, memory budget, restrictions |
 | [CLI](cli/README.md) | `aictem discover`: install, usage, what it finds, exit codes |
+| [Product page](https://d0gra.github.io/AI-CTEM/) | What the platform does, at a glance |
 | [Changelog](CHANGELOG.md) | Release history |
 
 ## Contributing, security and licence
