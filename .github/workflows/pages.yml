@@ -1,5 +1,6 @@
 # Publishes the product page in site/ to GitHub Pages: https://d0gra.github.io/AI-CTEM/
-# The page is static and has no build step; `enablement: true` turns Pages on the first time this runs.
+# The page is static and has no build step. Pages itself had to be enabled once by a repository
+# administrator (Settings -> Pages -> Source: GitHub Actions); the workflow token is not allowed to do it.
 name: Pages
 
 on:
@@ -26,7 +27,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
-        with: { enablement: true }
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
       - id: deploy
