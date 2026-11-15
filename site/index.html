@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CTEM Platform — exposure management for conventional and AI infrastructure</title>
+<meta name="description" content="Open-source Continuous Threat Exposure Management. Discover assets, assess them inside an authorized scope, rank by real risk, trace attack paths and verify fixes — including AI providers, agents, MCP servers, RAG and model files.">
+<link rel="canonical" href="https://d0gra.github.io/AI-CTEM/">
+<meta property="og:title" content="CTEM Platform">
+<meta property="og:description" content="Exposure management for conventional and AI infrastructure. Live demo, MIT licensed.">
+<meta property="og:url" content="https://d0gra.github.io/AI-CTEM/">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🛡️</text></svg>">
+<style>
+  :root {
+    --bg: #0b0f14; --surface: #121821; --surface-2: #19212c; --border: #26303d;
+    --text: #e6edf3; --muted: #93a1b1; --accent: #4f8cff; --accent-soft: #15233d;
+    --ok: #3fb950; --high: #f0883e; --crit: #f85149;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #ffffff; --surface: #f7f9fc; --surface-2: #eef2f7; --border: #d9e1ec;
+      --text: #0f1821; --muted: #5a6978; --accent: #1f6feb; --accent-soft: #e8f0fe;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans);
+    line-height: 1.65; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 20px; }
+  a { color: var(--accent); }
+  h1, h2, h3 { line-height: 1.2; letter-spacing: -0.02em; margin: 0 0 .5em; }
+  h2 { font-size: 1.75rem; margin-top: 0; }
+  h3 { font-size: 1.05rem; }
+  p { margin: 0 0 1em; }
+  code, pre { font-family: var(--mono); font-size: .875rem; }
+  pre {
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; overflow-x: auto; margin: 0 0 1em;
+  }
+  pre .c { color: var(--muted); }
+  section { padding: 64px 0; border-top: 1px solid var(--border); }
+  .lede { color: var(--muted); font-size: 1.05rem; max-width: 70ch; }
+
+  header { padding: 72px 0 56px; text-align: center; }
+  .tag {
+    display: inline-block; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--accent); background: var(--accent-soft); border: 1px solid var(--border);
+    padding: 5px 12px; border-radius: 999px; margin-bottom: 20px;
+  }
+  header h1 { font-size: clamp(2.1rem, 6vw, 3.4rem); }
+  header .lede { margin: 0 auto 28px; font-size: 1.15rem; }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; padding: 11px 20px; border-radius: 9px; font-weight: 600;
+    text-decoration: none; border: 1px solid var(--border); color: var(--text); background: var(--surface);
+  }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn:hover { border-color: var(--accent); }
+  .note { color: var(--muted); font-size: .85rem; margin-top: 18px; }
+
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(255px, 1fr)); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .card h3 { margin-bottom: .35em; }
+  .card p { margin: 0; color: var(--muted); font-size: .92rem; }
+
+  .flow {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    font-family: var(--mono); font-size: .78rem; color: var(--muted);
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px;
+  }
+  .flow span { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; color: var(--text); }
+  .flow i { font-style: normal; color: var(--accent); }
+
+  .stats { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .stat b { display: block; font-size: 1.6rem; letter-spacing: -0.02em; }
+  .stat span { color: var(--muted); font-size: .82rem; }
+
+  ul.plain { margin: 0; padding-left: 1.1em; color: var(--muted); }
+  ul.plain li { margin-bottom: .45em; }
+  ul.plain b { color: var(--text); font-weight: 600; }
+
+  .split { display: grid; gap: 28px; grid-template-columns: 1fr 1fr; align-items: start; }
+  @media (max-width: 760px) { .split { grid-template-columns: 1fr; } section { padding: 48px 0; } }
+
+  footer { border-top: 1px solid var(--border); padding: 36px 0 56px; color: var(--muted); font-size: .9rem; }
+  footer a { margin-right: 18px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="tag">Open source · MIT</div>
+    <h1>Exposure management for conventional <em>and</em> AI infrastructure</h1>
+    <p class="lede">
+      Discover what you own, assess it inside an authorized scope, rank findings by real-world risk, trace
+      attack paths, and close the loop with verified remediation — in one data model.
+    </p>
+    <div class="cta">
+      <a class="btn primary" href="https://ai-ctem.onrender.com/">▶ Open the live demo</a>
+      <a class="btn" href="https://github.com/d0gra/AI-CTEM">Source on GitHub</a>
+      <a class="btn" href="https://pypi.org/project/aictem/">The CLI on PyPI</a>
+    </div>
+    <p class="note">
+      One-click sign-in for every role, no sign-up. It runs on a free instance, so the first visit after a
+      quiet spell takes about a minute to wake.
+    </p>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2>The lifecycle, as a system of record</h2>
+    <p class="lede">
+      Security teams rarely lack scanners. They lack one place where every scanner's output, every asset and
+      every piece of business context meet — and where “fixed” means verified rather than asserted.
+    </p>
+    <div class="flow">
+      <span>Scope</span><i>→</i><span>Discover</span><i>→</i><span>Inventory</span><i>→</i><span>Assess</span>
+      <i>→</i><span>Prioritize</span><i>→</i><span>Attack paths</span><i>→</i><span>Remediate</span><i>→</i><span>Retest</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>How it is built</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>Authorized by construction</h3>
+        <p>No engine touches a target that isn't covered by a recorded authorization. Active techniques and
+           private networks need their own flags, re-checked at run time.</p>
+      </div>
+      <div class="card">
+        <h3>Evidence over assertion</h3>
+        <p>Findings carry stored evidence and a confidence level. One closes only on a retest that no longer
+           observes it, or a recorded manual verification.</p>
+      </div>
+      <div class="card">
+        <h3>Transparent risk</h3>
+        <p>Likelihood × impact, with contextual escalators and KEV floors. Every score keeps its full
+           breakdown, so a ranking can always be explained.</p>
+      </div>
+      <div class="card">
+        <h3>Isolation in the database</h3>
+        <p>Multi-tenancy is enforced by PostgreSQL row-level security under a role that cannot bypass it —
+           not only by application code.</p>
+      </div>
+      <div class="card">
+        <h3>Attack paths</h3>
+        <p>Shortest exposure chains from internet-facing entry points to critical assets, over
+           evidence-backed relationships, graded verified, probable or theoretical.</p>
+      </div>
+      <div class="card">
+        <h3>Honest coverage</h3>
+        <p>Every integration states what it was verified against, and the limitations are published rather
+           than hidden.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>AI systems are assets, not a separate product</h2>
+    <div class="split">
+      <div>
+        <ul class="plain">
+          <li><b>Discovery.</b> 51 AI technologies: providers, frameworks, vector databases, serving runtimes and MCP SDKs — found from imports, dependencies, endpoints, containers and IaC.</li>
+          <li><b>Agents and their tools.</b> 13 agent frameworks. Tools are attached to the agents that use them, classified by capability (payment, shell, file write, email) and checked for an approval step.</li>
+          <li><b>MCP.</b> Static review of server definitions, plus a live probe limited to <code>initialize</code> and <code>*/list</code>. <code>tools/call</code> is never sent, and a hard guard enforces it.</li>
+          <li><b>Model files.</b> Pickle streams are disassembled without being executed; references to code-execution callables are reported with opcode evidence.</li>
+          <li><b>Shadow AI.</b> Provider usage compared with the organization's approved list — reported as <em>unknown</em> rather than <em>unapproved</em> when no list is set.</li>
+          <li><b>Red team.</b> 15 deterministic, marker- and canary-based tests inside an authorization, scope, budget and rate-limit envelope. Requested tools are recorded, never run.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="card">
+          <h3>Mapped to the standards people report against</h3>
+          <p style="margin-bottom:12px">OWASP Top 10 for LLM Applications (2025) · MITRE ATLAS · NIST AI RMF.</p>
+          <p>The posture review runs when an AI asset changes, after assessments that touch one, and daily.
+             Controls nobody has recorded on an exposed or production asset are reported — so nothing passes
+             for lack of data.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Scan a repository in one command</h2>
+    <p class="lede">
+      <code>aictem</code> is the platform's discovery CLI. It runs where the code lives — a laptop or a CI job —
+      and inventories a repository from the inside. The Python standard library is its only dependency.
+    </p>
+    <pre><span class="c"># nothing to deploy, nothing to configure</span>
+pip install aictem &amp;&amp; aictem discover .
+
+<span class="c"># for GitHub code scanning, or to send the inventory to the platform</span>
+aictem discover . -f sarif -o aictem.sarif
+aictem discover . --upload --gate high</pre>
+    <p class="lede" style="margin-bottom:0">
+      It finds AI providers and models, agents and their tools, RAG pipelines, vector stores, MCP servers and
+      clients, model files, packages from 8 ecosystems, container images, Kubernetes, Terraform,
+      CloudFormation, CI pipelines and committed secrets. Model files are never loaded, and a secret's value
+      never leaves the machine — a finding carries the prefix, the length and a fingerprint.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>One image to deploy</h2>
+    <p class="lede">The role is the command. PostgreSQL, Redis and object storage are external.</p>
+    <pre>docker pull ghcr.io/d0gra/ai-ctem:0.3.0
+
+docker run ghcr.io/d0gra/ai-ctem:0.3.0 migrate   <span class="c"># apply database migrations, then exit</span>
+docker run ghcr.io/d0gra/ai-ctem:0.3.0 all       <span class="c"># web, API and worker in this container</span>
+docker run ghcr.io/d0gra/ai-ctem:0.3.0 serve     <span class="c"># web and API, with workers elsewhere</span>
+docker run ghcr.io/d0gra/ai-ctem:0.3.0 worker    <span class="c"># background jobs only</span></pre>
+    <p class="lede">
+      Released images carry build provenance and an SBOM attestation. Compose and Kubernetes manifests are in
+      the repository; the Kubernetes layout is the same image three times, differing only in its arguments.
+    </p>
+    <div class="stats">
+      <div class="stat"><b>13</b><span>assessment engines</span></div>
+      <div class="stat"><b>26</b><span>connectors</span></div>
+      <div class="stat"><b>33</b><span>asset types</span></div>
+      <div class="stat"><b>121</b><span>REST paths</span></div>
+      <div class="stat"><b>194</b><span>automated tests</span></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>What it is not, yet</h2>
+    <p class="lede">
+      Worth knowing before you evaluate it. The full list is in the repository's README.
+    </p>
+    <ul class="plain">
+      <li><b>No single sign-on.</b> No OIDC or SAML, and no SCIM provisioning.</li>
+      <li><b>AWS only</b> for native cloud inventory. Azure and Google Cloud arrive through Prowler reports, and there is no live Kubernetes inventory.</li>
+      <li><b>No web crawler and no injection testing.</b> Passive analysis and safe read-only probes only; bring ZAP, Nuclei or Semgrep and import the results.</li>
+      <li><b>Attack paths</b> are built from recorded relationships. Network reachability is not computed, so a path can be overstated.</li>
+      <li><b>Third-party integrations</b> are verified against emulators and recorded API shapes, not yet against real AWS, Jira, GitHub, GitLab, Slack or Teams accounts.</li>
+      <li><b>Scale</b> is exercised with hundreds of assets per organization; there are no load tests yet.</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>
+      <a href="https://ai-ctem.onrender.com/">Live demo</a>
+      <a href="https://github.com/d0gra/AI-CTEM">GitHub</a>
+      <a href="https://pypi.org/project/aictem/">PyPI</a>
+      <a href="https://github.com/d0gra/AI-CTEM/blob/main/docs/deployment.md">Deployment</a>
+      <a href="https://github.com/d0gra/AI-CTEM/blob/main/docs/security.md">Security</a>
+    </p>
+    <p style="margin:0">
+      MIT licensed. The demo is public and shared: everything in it is synthetic, it resets when the instance
+      restarts, and active testing is disabled there.
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,5 +1,6 @@
-# Reference manifests. They use the released images (ghcr.io/d0gra/ai-ctem/{api,worker,web}); to run your
-# own builds, replace the image names. Create the Secret from your secret manager, then: kubectl apply -f infrastructure/kubernetes/
+# Reference manifests for the released image, ghcr.io/d0gra/ai-ctem. One image runs every role; the
+# role is the command, so these manifests differ only in `args` and in how many replicas they run.
+# Create the Secret from your secret manager, then: kubectl apply -f infrastructure/kubernetes/
 # PostgreSQL and Redis are expected as managed services or separately operated workloads.
 apiVersion: v1
 kind: Namespace
@@ -18,7 +19,8 @@ data:
   CTEM_STORAGE_BACKEND: s3
   CTEM_S3_BUCKET: ctem-evidence
   CTEM_LOG_JSON: "true"
-  # Pod network range of the web tier (the only caller of the API, enforced by the NetworkPolicy below).
+  # The Ingress controller appends the real client address to X-Forwarded-For.
+  CTEM_UPSTREAM_PROXY: "true"
   CTEM_TRUSTED_PROXIES: 10.0.0.0/8
 ---
 # Example only: create this from a secret manager (External Secrets, Sealed Secrets, CSI driver).
@@ -33,6 +35,7 @@ stringData:
   CTEM_MIGRATION_DATABASE_URL: postgresql+psycopg://ctem_owner:REPLACE_ME@postgres:5432/ctem
   CTEM_REDIS_URL: redis://redis:6379/0
 ---
+# Run before every upgrade, and wait for it to complete before the Deployments roll.
 apiVersion: batch/v1
 kind: Job
 metadata: { name: ctem-migrate, namespace: ctem }
@@ -44,43 +47,51 @@ spec:
       securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: migrate
-          image: ghcr.io/d0gra/ai-ctem/api:0.3.0
-          command: ["alembic", "upgrade", "head"]
+          image: ghcr.io/d0gra/ai-ctem:0.3.0
+          args: ["migrate"]
           envFrom: [{ configMapRef: { name: ctem-config } }, { secretRef: { name: ctem-secrets } }]
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: {} }]
 ---
+# The request tier: the web server and the API in one pod. They are always co-located, because the
+# browser talks only to the web server and its /api/* proxy destination is fixed when the image is built.
 apiVersion: apps/v1
 kind: Deployment
-metadata: { name: ctem-api, namespace: ctem }
+metadata: { name: ctem, namespace: ctem }
 spec:
   replicas: 2
-  selector: { matchLabels: { app: ctem-api } }
+  selector: { matchLabels: { app: ctem } }
   template:
     metadata:
-      labels: { app: ctem-api }
+      labels: { app: ctem }
       annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8000", prometheus.io/path: /metrics }
     spec:
       automountServiceAccountToken: false
       securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
       containers:
-        - name: api
-          image: ghcr.io/d0gra/ai-ctem/api:0.3.0
-          ports: [{ containerPort: 8000 }]
+        - name: ctem
+          image: ghcr.io/d0gra/ai-ctem:0.3.0
+          args: ["serve"]   # web and API; background jobs run in the worker Deployment below
+          ports: [{ name: web, containerPort: 3000 }, { name: api, containerPort: 8000 }]
           envFrom: [{ configMapRef: { name: ctem-config } }, { secretRef: { name: ctem-secrets } }]
-          readinessProbe: { httpGet: { path: /readyz, port: 8000 }, periodSeconds: 10 }
-          livenessProbe: { httpGet: { path: /healthz, port: 8000 }, periodSeconds: 20 }
-          resources: { requests: { cpu: 250m, memory: 384Mi }, limits: { memory: 1Gi } }
+          readinessProbe: { httpGet: { path: /readyz, port: api }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /healthz, port: api }, periodSeconds: 20 }
+          startupProbe: { httpGet: { path: /login, port: web }, periodSeconds: 5, failureThreshold: 24 }
+          resources: { requests: { cpu: 400m, memory: 640Mi }, limits: { memory: 1536Mi } }
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
-          volumeMounts: [{ name: tmp, mountPath: /tmp }]
-      volumes: [{ name: tmp, emptyDir: {} }]
+          volumeMounts: [{ name: cache, mountPath: /app/web/.next/cache }, { name: tmp, mountPath: /tmp }]
+      volumes: [{ name: cache, emptyDir: {} }, { name: tmp, emptyDir: {} }]
 ---
 apiVersion: v1
 kind: Service
-metadata: { name: api, namespace: ctem }
+metadata: { name: web, namespace: ctem }
 spec:
-  selector: { app: ctem-api }
-  ports: [{ port: 8000, targetPort: 8000 }]
+  selector: { app: ctem }
+  ports: [{ port: 80, targetPort: web }]
 ---
+# Background jobs. Scaled on its own: claiming is safe under concurrency (FOR UPDATE SKIP LOCKED) and
+# the scheduler tick is serialised across processes with a PostgreSQL advisory lock.
 apiVersion: apps/v1
 kind: Deployment
 metadata: { name: ctem-worker, namespace: ctem }
@@ -97,7 +108,8 @@ spec:
       securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: worker
-          image: ghcr.io/d0gra/ai-ctem/worker:0.3.0
+          image: ghcr.io/d0gra/ai-ctem:0.3.0
+          args: ["worker"]
           env: [{ name: CTEM_WORKER_METRICS_PORT, value: "9108" }]
           envFrom: [{ configMapRef: { name: ctem-config } }, { secretRef: { name: ctem-secrets } }]
           ports: [{ containerPort: 9108 }]
@@ -105,35 +117,6 @@ spec:
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
           volumeMounts: [{ name: tmp, mountPath: /tmp }]
       volumes: [{ name: tmp, emptyDir: {} }]
----
-apiVersion: apps/v1
-kind: Deployment
-metadata: { name: ctem-web, namespace: ctem }
-spec:
-  replicas: 2
-  selector: { matchLabels: { app: ctem-web } }
-  template:
-    metadata: { labels: { app: ctem-web } }
-    spec:
-      automountServiceAccountToken: false
-      securityContext: { runAsNonRoot: true, runAsUser: 1000, seccompProfile: { type: RuntimeDefault } }
-      containers:
-        - name: web
-          image: ghcr.io/d0gra/ai-ctem/web:0.3.0   # built with CTEM_BACKEND_URL=http://api:8000
-          ports: [{ containerPort: 3000 }]
-          env: [{ name: CTEM_UPSTREAM_PROXY, value: "true" }]   # the Ingress controller appends the client address
-          readinessProbe: { httpGet: { path: /login, port: 3000 }, periodSeconds: 10 }
-          resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 512Mi } }
-          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
-          volumeMounts: [{ name: cache, mountPath: /app/.next/cache }, { name: tmp, mountPath: /tmp }]
-      volumes: [{ name: cache, emptyDir: {} }, { name: tmp, emptyDir: {} }]
----
-apiVersion: v1
-kind: Service
-metadata: { name: web, namespace: ctem }
-spec:
-  selector: { app: ctem-web }
-  ports: [{ port: 80, targetPort: 3000 }]
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -147,13 +130,15 @@ spec:
       http:
         paths: [{ path: /, pathType: Prefix, backend: { service: { name: web, port: { number: 80 } } } }]
 ---
-# Only the web tier may call the API; only the API and workers reach the data stores.
+# Only the web port is reachable from the cluster. The API port is open inside the pod, where the web
+# server proxies to it over loopback; nothing else should reach it. Add a rule here for your monitoring
+# namespace if Prometheus scrapes /metrics on 8000, or set CTEM_API_BIND=127.0.0.1 to close it entirely
+# (which also stops the scrape).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
-metadata: { name: api-ingress, namespace: ctem }
+metadata: { name: ctem-ingress, namespace: ctem }
 spec:
-  podSelector: { matchLabels: { app: ctem-api } }
+  podSelector: { matchLabels: { app: ctem } }
   policyTypes: [Ingress]
   ingress:
-    - from: [{ podSelector: { matchLabels: { app: ctem-web } } }]
-      ports: [{ port: 8000 }]
+    - ports: [{ port: 3000 }]

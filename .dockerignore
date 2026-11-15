@@ -1,4 +1,5 @@
-# Build context for Dockerfile.demo (repository root). Keep local data and build output out of images.
+# Build context for Dockerfile and Dockerfile.demo (both take the repository root).
+# Keep local data, build output and anything the images do not need out of the context.
 .git
 .local
 .claude
@@ -17,3 +18,10 @@ backend/tests
 frontend/tests
 frontend/coverage
 docs
+frontend/e2e
+frontend/playwright.config.ts
+frontend/playwright-report
+frontend/test-results
+cli
+site
+.github

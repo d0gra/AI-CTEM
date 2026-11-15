@@ -49,28 +49,41 @@ services:
     restart: unless-stopped
 
   migrate:
-    build: { context: ./backend, target: api }
-    command: ["alembic", "upgrade", "head"]
+    build: { context: ., dockerfile: Dockerfile }
+    image: ctem
+    command: ["migrate"]
     environment: *backend-env
     depends_on:
       postgres: { condition: service_healthy }
     restart: "no"
 
-  api:
-    build: { context: ./backend, target: api }
-    environment: *backend-env
+  # The web server and the API, in one container from the one image. Background jobs run in `worker`.
+  app:
+    image: ctem
+    command: ["serve"]
+    ports: ["${CTEM_WEB_PORT:-3000}:3000"]
+    environment:
+      <<: *backend-env
+      CTEM_UPSTREAM_PROXY: ${CTEM_UPSTREAM_PROXY:-false}
     volumes: [storage:/app/var/storage]
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:3000/login', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
     read_only: true
-    tmpfs: [/tmp]
+    tmpfs: [/tmp, /app/web/.next/cache]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
 
   worker:
-    build: { context: ./backend, target: worker }
+    image: ctem
+    command: ["worker"]
     environment:
       <<: *backend-env
       CTEM_WORKER_METRICS_PORT: "9108"
@@ -79,20 +92,6 @@ services:
       migrate: { condition: service_completed_successfully }
     read_only: true
     tmpfs: [/tmp]
-    cap_drop: [ALL]
-    security_opt: ["no-new-privileges:true"]
-    restart: unless-stopped
-
-  web:
-    build:
-      context: ./frontend
-      args: { CTEM_BACKEND_URL: "http://api:8000" }
-    ports: ["${CTEM_WEB_PORT:-3000}:3000"]
-    environment:
-      CTEM_UPSTREAM_PROXY: ${CTEM_UPSTREAM_PROXY:-false}
-    depends_on: [api]
-    read_only: true
-    tmpfs: [/tmp, /app/.next/cache]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped

@@ -41,8 +41,8 @@ jobs:
             exit 1
           fi
 
-  images:
-    name: Image ${{ matrix.name }}
+  image:
+    name: Build and publish the image
     needs: version
     runs-on: ubuntu-latest
     permissions:
@@ -50,14 +50,6 @@ jobs:
       packages: write      # push to ghcr.io with GITHUB_TOKEN
       id-token: write      # provenance attestation
       attestations: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { name: api, context: backend, file: backend/Dockerfile, target: api }
-          - { name: worker, context: backend, file: backend/Dockerfile, target: worker }
-          - { name: web, context: frontend, file: frontend/Dockerfile, target: "" }
-          - { name: demo, context: ., file: Dockerfile.demo, target: "" }
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -70,37 +62,36 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ needs.version.outputs.repository }}/${{ matrix.name }}
+          images: ${{ env.REGISTRY }}/${{ needs.version.outputs.repository }}
           tags: |
             type=raw,value=${{ needs.version.outputs.version }}
             type=raw,value=latest,enable=${{ env.PUBLISH == 'true' }}
           labels: |
-            org.opencontainers.image.title=CTEM Platform ${{ matrix.name }}
+            org.opencontainers.image.title=CTEM Platform
             org.opencontainers.image.version=${{ needs.version.outputs.version }}
             org.opencontainers.image.licenses=MIT
       - id: build
         uses: docker/build-push-action@v6
         with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.file }}
-          target: ${{ matrix.target }}
+          context: .
+          file: Dockerfile
           push: ${{ env.PUBLISH == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           provenance: ${{ env.PUBLISH == 'true' && 'mode=max' || 'false' }}
           sbom: ${{ env.PUBLISH == 'true' }}
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,scope=${{ matrix.name }},mode=max
+          cache-from: type=gha,scope=prod
+          cache-to: type=gha,scope=prod,mode=max
       - uses: actions/attest-build-provenance@v2
         if: env.PUBLISH == 'true'
         with:
-          subject-name: ${{ env.REGISTRY }}/${{ needs.version.outputs.repository }}/${{ matrix.name }}
+          subject-name: ${{ env.REGISTRY }}/${{ needs.version.outputs.repository }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
   github-release:
     name: GitHub release
-    needs: [version, images]
+    needs: [version, image]
     if: startsWith(github.ref, 'refs/tags/') && !inputs.dry_run
     runs-on: ubuntu-latest
     permissions: { contents: write }

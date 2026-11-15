@@ -90,7 +90,13 @@ jobs:
     needs: [backend, frontend]
     permissions:
       contents: read
-      packages: write  # publish the verified images from main; see the last step
+      packages: write  # publish the verified image from main; see the last steps
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env: { POSTGRES_PASSWORD: postgres }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 20
     env:
       # image.source is what links the package to this repository on GitHub, so it inherits the
       # repository's visibility and permissions instead of being an orphan package on the account.
@@ -100,10 +106,53 @@ jobs:
         --label org.opencontainers.image.licenses=MIT
     steps:
       - uses: actions/checkout@v4
-      - run: docker build $LABELS --target api -t ctem/api:ci backend
-      - run: docker build $LABELS --target worker -t ctem/worker:ci backend
-      - run: docker build $LABELS -t ctem/web:ci frontend
-      - run: docker build $LABELS -f Dockerfile.demo -t ctem/demo:ci .
+
+      - name: Build the production image
+        run: docker build $LABELS -t ctem:ci .
+      - name: Database for it to talk to
+        run: |
+          PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE ctem_owner LOGIN PASSWORD 'owner_ci';
+          CREATE ROLE ctem_app LOGIN PASSWORD 'app_ci' NOSUPERUSER NOBYPASSRLS;
+          CREATE DATABASE ctem OWNER ctem_owner;
+          SQL
+      - name: Every role of the production image works
+        run: |
+          set -eux
+          keys=$(docker run --rm ctem:ci python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+          cat > /tmp/ctem.env <<EOF
+          CTEM_ENV=production
+          CTEM_DATABASE_URL=postgresql+psycopg://ctem_app:app_ci@127.0.0.1:5432/ctem
+          CTEM_MIGRATION_DATABASE_URL=postgresql+psycopg://ctem_owner:owner_ci@127.0.0.1:5432/ctem
+          CTEM_SECRET_KEY=$(openssl rand -hex 32)
+          CTEM_ENCRYPTION_KEYS=$keys
+          CTEM_COOKIE_SECURE=false
+          EOF
+
+          docker run --rm --network host --env-file /tmp/ctem.env ctem:ci migrate
+
+          docker run -d --name prod --network host --env-file /tmp/ctem.env ctem:ci all
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://127.0.0.1:3000/login && break; sleep 2; done
+          docker logs prod
+          curl -sf -o /dev/null http://127.0.0.1:8000/healthz                     # the API answers
+          curl -sf -o /dev/null http://127.0.0.1:3000/login                       # the web tier serves
+          # 401 rather than 502: the web tier really is proxying /api/* to the API in the same container.
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/v1/auth/me)" = 401
+          docker logs prod 2>&1 | grep -q "\[ctem .*\] worker"                  # the worker started too
+          docker rm -f prod
+
+          docker run -d --name worker --network host --env-file /tmp/ctem.env ctem:ci worker
+          sleep 15
+          docker ps --filter name=worker --filter status=running --format '{{.Names}}' | grep -qx worker
+          docker rm -f worker
+
+          ! docker run --rm ctem:ci not-a-role                                    # an unknown role fails
+          docker run --rm --network host --env-file /tmp/ctem.env ctem:ci python -c "import app.main"  # a command still runs
+
+      # The demo image is built and tested here but never published: it bundles PostgreSQL and seeds
+      # shared accounts, and Render builds it from this repository itself.
+      - name: Build the demo image
+        run: docker build $LABELS -f Dockerfile.demo -t ctem/demo:ci .
       - name: Start the demo image
         run: |
           # A higher sign-in limit for the browser tests, which sign in as several roles from one address.
@@ -130,14 +179,14 @@ jobs:
         if: failure()
         with: { name: playwright-report, path: frontend/playwright-report/, retention-days: 7 }
 
-      # Publishing is the last thing the job does, so only images that passed the smoke test and the
-      # browser tests above are ever pushed. Pull requests do not publish: one from a fork must not be
-      # handed a token that can write packages.
+      # Publishing is the last thing the job does, so only an image whose every role started and whose
+      # product passed the browser tests is pushed. Pull requests do not publish: one from a fork must
+      # not be handed a token that can write packages.
       #
-      # These are builds of main, tagged `main` and `sha-<commit>`. A production deployment should use a
+      # One package, `ai-ctem`, tagged `main` and `sha-<commit>`. A production deployment should use a
       # released version instead (release.yml, a v* tag), which also carries provenance and an SBOM;
       # `latest` is published there and never moved by this job.
-      - name: Publish the verified images to GitHub Container Registry
+      - name: Publish the verified image to GitHub Container Registry
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
@@ -147,9 +196,7 @@ jobs:
       - name: Push
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          registry=$(echo "ghcr.io/${{ github.repository_owner }}/ai-ctem" | tr '[:upper:]' '[:lower:]')
-          for name in api worker web demo; do
-            docker tag "ctem/$name:ci" "$registry/$name:main"
-            docker tag "ctem/$name:ci" "$registry/$name:sha-$(echo "$GITHUB_SHA" | cut -c1-12)"
-            docker push --all-tags "$registry/$name"
-          done
+          image=$(echo "ghcr.io/${{ github.repository_owner }}/ai-ctem" | tr '[:upper:]' '[:lower:]')
+          docker tag ctem:ci "$image:main"
+          docker tag ctem:ci "$image:sha-$(echo "$GITHUB_SHA" | cut -c1-12)"
+          docker push --all-tags "$image"
