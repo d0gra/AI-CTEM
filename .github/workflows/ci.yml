@@ -88,12 +88,22 @@ jobs:
   images:
     runs-on: ubuntu-latest
     needs: [backend, frontend]
+    permissions:
+      contents: read
+      packages: write  # publish the verified images from main; see the last step
+    env:
+      # image.source is what links the package to this repository on GitHub, so it inherits the
+      # repository's visibility and permissions instead of being an orphan package on the account.
+      LABELS: >-
+        --label org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+        --label org.opencontainers.image.revision=${{ github.sha }}
+        --label org.opencontainers.image.licenses=MIT
     steps:
       - uses: actions/checkout@v4
-      - run: docker build --target api -t ctem/api:ci backend
-      - run: docker build --target worker -t ctem/worker:ci backend
-      - run: docker build -t ctem/web:ci frontend
-      - run: docker build -f Dockerfile.demo -t ctem/demo:ci .
+      - run: docker build $LABELS --target api -t ctem/api:ci backend
+      - run: docker build $LABELS --target worker -t ctem/worker:ci backend
+      - run: docker build $LABELS -t ctem/web:ci frontend
+      - run: docker build $LABELS -f Dockerfile.demo -t ctem/demo:ci .
       - name: Start the demo image
         run: |
           # A higher sign-in limit for the browser tests, which sign in as several roles from one address.
@@ -119,3 +129,27 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: failure()
         with: { name: playwright-report, path: frontend/playwright-report/, retention-days: 7 }
+
+      # Publishing is the last thing the job does, so only images that passed the smoke test and the
+      # browser tests above are ever pushed. Pull requests do not publish: one from a fork must not be
+      # handed a token that can write packages.
+      #
+      # These are builds of main, tagged `main` and `sha-<commit>`. A production deployment should use a
+      # released version instead (release.yml, a v* tag), which also carries provenance and an SBOM;
+      # `latest` is published there and never moved by this job.
+      - name: Publish the verified images to GitHub Container Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          registry=$(echo "ghcr.io/${{ github.repository_owner }}/ai-ctem" | tr '[:upper:]' '[:lower:]')
+          for name in api worker web demo; do
+            docker tag "ctem/$name:ci" "$registry/$name:main"
+            docker tag "ctem/$name:ci" "$registry/$name:sha-$(echo "$GITHUB_SHA" | cut -c1-12)"
+            docker push --all-tags "$registry/$name"
+          done

@@ -93,6 +93,16 @@ python -m app.cli delete-organization <org-slug> --confirm <org-slug>  # permane
 
 Pushing a tag `vX.Y.Z` runs `.github/workflows/release.yml`: it checks that the backend, frontend, Kubernetes manifests and changelog all declare that version (`scripts/check_versions.py`), builds the `api`, `worker`, `web` and `demo` images, pushes them to GitHub Container Registry with build provenance and an SBOM attestation, and opens a GitHub release from the changelog entry. Verify an image with `gh attestation verify oci://ghcr.io/d0gra/ai-ctem/api:<version> --owner d0gra`. Running the workflow by hand builds the images without pushing. The CLI is released separately with `cli-v*` tags.
 
+Between releases, CI publishes the images it has already built and tested from every push to `main`, tagged `main` and `sha-<commit>`:
+
+```
+ghcr.io/d0gra/ai-ctem/{api,worker,web,demo}:main
+```
+
+They are pushed only after the demo smoke test and the browser tests pass in the same job, so a broken image is never published, and only from `main` — a pull request is not given a token that can write packages. They carry no provenance or SBOM attestation and `latest` is never moved to them, so prefer a released version in production and use these for staging or for following `main`.
+
+**The first push creates the packages as private.** Until someone opens each package on GitHub and either makes it public or grants the deploying account read access, `docker pull` fails with `denied`, and a Kubernetes node needs an `imagePullSecret`.
+
 ## Upgrades
 
 Run `alembic upgrade head` (the `migrate` service or Job) before starting new API and worker versions. Migrations are transactional. Downgrades are provided for the initial schema but should not be relied on for data-bearing releases; restore from backup instead.
