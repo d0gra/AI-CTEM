@@ -263,7 +263,7 @@ aictem discover . -f json -o inventory.json       # full inventory; upload this 
 aictem discover . --upload --gate high            # send it straight there (CTEM_URL, CTEM_CI_TOKEN)
 ```
 
-Inside the platform, the same commands are on **AI Security → Discovery and assessment**, next to the Import button that accepts the inventory.
+Inside the platform, **Add asset** (Assets and AI Security) walks through the same steps and accepts the inventory file directly, and **AI Security → Discovery and assessment** lists the commands next to the upload history.
 
 | Finds | How |
 | --- | --- |

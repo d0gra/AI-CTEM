@@ -7,6 +7,7 @@ import { Suspense, useState, type FormEvent } from "react";
 import { DataTable } from "@/components/data-table";
 import { Alert, Badge, Button, Card, Dialog, ErrorState, Field, Input, PageHeader, Select, Skeleton, Stat, StatusBadge, Tabs } from "@/components/ui";
 import { AssessmentsPanel } from "@/features/assessments";
+import { ImportFromRepository } from "@/features/discovery-cli";
 import { FindingsTable } from "@/features/findings-table";
 import { errorMessage } from "@/lib/api";
 import { relativeTime, titleCase } from "@/lib/format";
@@ -81,14 +82,17 @@ function ToolsEditor({ initial, saving, onSave }: { initial: Tool[]; saving: boo
 function RegisterDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (asset: Obj) => void }) {
   const create = useAction<Obj, Obj>("POST", "/ai/assets");
   const [type, setType] = useState("rag_application");
+  const [mode, setMode] = useState<"cli" | "manual">("cli");
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = Object.fromEntries(new FormData(e.currentTarget).entries()) as Record<string, string>;
     create.mutate({ ...form, provider: form.provider || null }, { onSuccess: onCreated });
   };
   return (
-    <Dialog open onClose={onClose} title="Add AI asset" wide>
-      <form onSubmit={submit} className="space-y-3">
+    <Dialog open onClose={onClose} title="Add AI assets" wide>
+      <Tabs value={mode} onChange={setMode} tabs={[{ id: "cli", label: "From a repository (recommended)" }, { id: "manual", label: "One asset by hand" }]} />
+      {mode === "cli" && <ImportFromRepository />}
+      {mode === "manual" && <form onSubmit={submit} className="space-y-3">
         {create.error && <Alert tone="critical">{errorMessage(create.error)}</Alert>}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Type" hint={TYPE_HINT[type]}>
@@ -106,7 +110,7 @@ function RegisterDialog({ onClose, onCreated }: { onClose: () => void; onCreated
         </div>
         <p className="text-xs text-muted">After saving you record its security configuration. The posture review runs automatically and reports any control that is missing or not yet recorded.</p>
         <div className="flex justify-end gap-2"><Button type="button" onClick={onClose}>Cancel</Button><Button type="submit" variant="primary" loading={create.isPending}>Add and record posture</Button></div>
-      </form>
+      </form>}
     </Dialog>
   );
 }

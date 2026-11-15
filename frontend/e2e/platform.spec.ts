@@ -105,3 +105,40 @@ test("signing out ends the session", async ({ page }) => {
   await page.goto("/overview");
   await expect(page).toHaveURL(/\/login/);
 });
+
+for (const [path, button] of [["/assets", "Add asset"], ["/ai-security", "Add AI asset"]] as const) {
+  test(`${button} explains how to import a repository with the CLI, and still adds one by hand`, async ({ page }) => {
+    await signInAs(page, "security.admin");
+    await page.goto(path);
+    await page.getByRole("button", { name: button, exact: true }).click();
+    const dialog = page.getByRole("dialog");
+
+    // 1. install, by every route
+    await expect(dialog.getByText("pipx install aictem", { exact: true })).toBeVisible();
+    for (const [tab, command] of [["pip", "pip install aictem"], ["uv", "uv tool install aictem"], ["Run without installing", "pipx run aictem discover ."]]) {
+      await dialog.getByRole("tab", { name: tab, exact: true }).click();
+      await expect(dialog.getByText(command, { exact: true })).toBeVisible();
+    }
+    // 2. scan, for each kind of project
+    await expect(dialog.getByText(/aictem discover \. -f json -o inventory\.json/)).toBeVisible();
+    await dialog.getByRole("tab", { name: "Part of a monorepo" }).click();
+    await expect(dialog.getByText("aictem discover services/payments -f json -o inventory.json")).toBeVisible();
+    await dialog.getByRole("tab", { name: "Several repositories" }).click();
+    await expect(dialog.getByText(/for repo in [\s\S]*aictem discover \. --upload/)).toBeVisible();
+    await expect(dialog.getByLabel("Inventory file")).toHaveCount(0); // sent directly, so there is no file to choose
+    await dialog.getByRole("tab", { name: "On every build" }).click();
+    await expect(dialog.getByText("pipx run aictem discover . --upload --gate high")).toBeVisible();
+    // 3. send it: a file chosen here, or the CLI with a token
+    await dialog.getByRole("tab", { name: "One repository" }).click();
+    await expect(dialog.getByLabel("Inventory file")).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Import" })).toBeDisabled();
+    await expect(dialog.getByText(/export CTEM_URL=http[\s\S]*CTEM_CI_TOKEN/)).toBeVisible();
+    await expect(dialog.getByRole("link", { name: /CI\/CD pipelines/ })).toHaveAttribute("href", "/integrations?tab=ci");
+    await dialog.getByText("Options for large or unusual repositories").click();
+    await expect(dialog.getByText("--exclude 'vendor/*'")).toBeVisible();
+
+    await dialog.getByRole("tab", { name: "One asset by hand" }).click();
+    await expect(dialog.getByText("Identifier", { exact: true })).toBeVisible();
+    await expect(dialog.getByText("pipx install aictem")).toHaveCount(0);
+  });
+}

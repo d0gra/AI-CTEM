@@ -4,7 +4,8 @@ import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { DataTable } from "@/components/data-table";
-import { Alert, Badge, Button, Dialog, Field, Input, PageHeader, Select, StatusBadge } from "@/components/ui";
+import { Alert, Badge, Button, Dialog, Field, Input, PageHeader, Select, StatusBadge, Tabs } from "@/components/ui";
+import { ImportFromRepository } from "@/features/discovery-cli";
 import { errorMessage } from "@/lib/api";
 import { relativeTime, titleCase } from "@/lib/format";
 import { can, useAction, useGet, useMe } from "@/lib/hooks";
@@ -19,6 +20,7 @@ export default function AssetsPage() {
   const create = useAction<Obj, Asset>("POST", "/assets");
   const router = useRouter();
   const [type, setType] = useState("");
+  const [mode, setMode] = useState<"cli" | "manual">("cli");
   const isAI = AI_TYPES.includes(type);
   const types: string[] = Object.keys(facets?.type ?? {}).sort();
   const submit = (e: FormEvent<HTMLFormElement>) => {
@@ -52,7 +54,7 @@ export default function AssetsPage() {
         ]}
         toggles={[{ key: "unowned", label: "Unowned" }, { key: "ai_only", label: "AI assets" }]}
         rowHref={(a) => `/assets/${a.id}`}
-        empty={{ title: "No assets match", body: "Assets are created by discovery, cloud and repository assessments, scanner imports, or manually." }}
+        empty={{ title: "No assets match", body: "Use Add asset to import a repository with the aictem CLI (pip install aictem) or to add one by hand. Assets are also created by discovery, cloud and repository assessments and by scanner imports." }}
         columns={[
           { key: "name", header: "Asset", sortable: true, className: "max-w-sm", render: (a) => <div className="min-w-0"><div className="truncate font-medium">{a.name}</div><div className="truncate font-mono text-xs text-muted">{a.identifier}</div></div> },
           { key: "type", header: "Type", sortable: true, render: (a) => <span className="text-xs">{titleCase(a.type)}</span> },
@@ -64,8 +66,10 @@ export default function AssetsPage() {
           { key: "last_seen_at", header: "Last seen", sortable: true, render: (a) => <span className="whitespace-nowrap text-xs text-muted">{relativeTime(a.last_seen_at)}</span> },
         ]}
       />
-      <Dialog open={open} onClose={() => setOpen(false)} title="Add asset">
-        <form onSubmit={submit} className="space-y-3">
+      <Dialog open={open} onClose={() => setOpen(false)} title="Add assets" wide>
+        <Tabs value={mode} onChange={setMode} tabs={[{ id: "cli", label: "From a repository (recommended)" }, { id: "manual", label: "One asset by hand" }]} />
+        {mode === "cli" && <ImportFromRepository />}
+        {mode === "manual" && <form onSubmit={submit} className="space-y-3">
           {create.error && <Alert tone="critical">{errorMessage(create.error)}</Alert>}
           <Field label="Type"><Select name="type" required value={type || facets?.asset_types?.[0] || ""} onChange={(e) => setType(e.target.value)}>{(facets?.asset_types ?? []).map((t: string) => <option key={t} value={t}>{titleCase(t)}</option>)}</Select></Field>
           {isAI && <Alert>AI assets appear under AI Security. After adding it you record its security configuration there; the posture review runs automatically.</Alert>}
@@ -78,7 +82,7 @@ export default function AssetsPage() {
             <Field label="Data sensitivity"><Select name="data_sensitivity" defaultValue="unknown">{["unknown", "public", "internal", "confidential", "restricted"].map((v) => <option key={v}>{v}</option>)}</Select></Field>
           </div>
           <div className="flex justify-end gap-2"><Button type="button" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" variant="primary" loading={create.isPending}>{isAI ? "Add and record posture" : "Add"}</Button></div>
-        </form>
+        </form>}
       </Dialog>
     </>
   );
