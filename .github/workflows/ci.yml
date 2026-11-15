@@ -126,7 +126,6 @@ jobs:
           CTEM_MIGRATION_DATABASE_URL=postgresql+psycopg://ctem_owner:owner_ci@127.0.0.1:5432/ctem
           CTEM_SECRET_KEY=$(openssl rand -hex 32)
           CTEM_ENCRYPTION_KEYS=$keys
-          CTEM_COOKIE_SECURE=false
           EOF
 
           docker run --rm --network host --env-file /tmp/ctem.env ctem:ci migrate
