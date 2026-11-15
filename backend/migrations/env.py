@@ -3,11 +3,12 @@
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 import app.models  # noqa: F401  (register tables)
 from app.core.config import get_settings
 from app.db.base import Base
+from app.db.schema import MIGRATION_LOCK
 
 config = context.config
 if config.config_file_name:
@@ -20,6 +21,10 @@ def run_migrations_online() -> None:
     url = config.get_main_option("sqlalchemy.url") or get_settings().migration_database_url
     engine = create_engine(url)
     with engine.connect() as connection:
+        # Containers that start together take turns: the lock is held until this connection closes,
+        # and a migrator that waited for it finds the schema already at head.
+        connection.execute(text("select pg_advisory_lock(:k)"), {"k": MIGRATION_LOCK})
+        connection.commit()
         context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
         with context.begin_transaction():
             context.run_migrations()

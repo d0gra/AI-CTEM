@@ -1,10 +1,13 @@
 #!/bin/bash
 # Production entrypoint. One image, one of four roles, given as the command:
 #
-#   all       web, API and worker in this container (the default)
+#   all       web, API and worker in this container (the default); applies migrations at start-up
 #   serve     web and API only, for when workers run in their own containers
 #   worker    background jobs only
 #   migrate   apply database migrations, then exit
+#
+# serve and worker do not migrate: they wait up to CTEM_SCHEMA_WAIT_SECONDS (300) for the migrate role
+# to bring the schema to this image's version, then exit with a message saying so.
 #
 # Any role that runs more than one process exits as soon as one of them does, with that process's
 # status, so the orchestrator restarts the container instead of leaving it half-running.
@@ -31,10 +34,34 @@ shutdown() {
   wait "${pids[@]}" 2>/dev/null || true
 }
 
+SCHEMA_WAIT=${CTEM_SCHEMA_WAIT_SECONDS:-300}
+
+# Runs a start-up step in the background and waits for it, so a stop signal is handled at once rather
+# than after the step (a wait for the schema can take minutes).
+fg_pid=
+foreground() {
+  "$@" &
+  fg_pid=$!
+  local code=0
+  wait "$fg_pid" || code=$?
+  fg_pid=
+  return "$code"
+}
+trap '[ -n "$fg_pid" ] && kill "$fg_pid" 2> /dev/null; exit 143' TERM INT
+
+# Waits for the database to accept connections, then applies migrations under an advisory lock, so
+# containers that start together migrate one at a time.
 migrate() {
   log "applying database migrations"
   cd "$APP"
-  alembic upgrade head
+  foreground python -m app.db.schema migrate --timeout "$SCHEMA_WAIT"
+}
+
+# Every role that serves or works waits here until the schema is at this image's version, and exits
+# naming the migrate role if it never gets there.
+wait_for_schema() {
+  cd "$APP"
+  foreground python -m app.db.schema wait --timeout "$SCHEMA_WAIT"
 }
 
 start_api() {
@@ -79,11 +106,18 @@ esac
 
 mkdir -p "${CTEM_STORAGE_LOCAL_PATH:-/app/var/storage}" 2> /dev/null || true
 
-# Off by default: with more than one replica, two containers would migrate at the same time. Run the
-# migrate role as a Job or an init container instead.
-if [ "${CTEM_AUTO_MIGRATE:-false}" = true ]; then
+# `all` is the single-container deployment, so it migrates itself at start-up, on first install and
+# on every upgrade. `serve` and `worker` are the scaled roles: they never migrate unless told to, and
+# wait for the migrate role (a Kubernetes Job, a Compose service) instead. CTEM_AUTO_MIGRATE=true or
+# false overrides either default.
+case "$role" in
+  all) auto_migrate=true ;;
+  *) auto_migrate=false ;;
+esac
+if [ "${CTEM_AUTO_MIGRATE:-$auto_migrate}" = true ]; then
   migrate
 fi
+wait_for_schema
 
 trap 'shutdown; exit 0' TERM INT
 

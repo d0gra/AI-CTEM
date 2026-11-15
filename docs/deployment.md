@@ -8,12 +8,13 @@ One image runs the whole platform. The role is the command:
 docker pull ghcr.io/d0gra/ai-ctem:0.3.0
 
 docker run ghcr.io/d0gra/ai-ctem:0.3.0 migrate   # apply database migrations, then exit
-docker run ghcr.io/d0gra/ai-ctem:0.3.0 all       # web, API and worker in this container (the default)
+docker run ghcr.io/d0gra/ai-ctem:0.3.0 all       # migrate, then web, API and worker in this container (the default)
 docker run ghcr.io/d0gra/ai-ctem:0.3.0 serve     # web and API only, when workers run separately
 docker run ghcr.io/d0gra/ai-ctem:0.3.0 worker    # background jobs only
 ```
 
 Anything else is run as a command, so `docker run … python -m app.cli verify-audit acme` works too.
+How each role treats the database schema is under [Migrations](#migrations).
 
 PostgreSQL, Redis and object storage are external. `Dockerfile.demo` is a separate image for the public
 demo — it bundles PostgreSQL and seeds shared accounts, and is never published or used in production.
@@ -22,6 +23,26 @@ demo — it bundles PostgreSQL and seeds shared accounts, and is never published
 `/api/*` to the API so the session cookie is same-origin and no CORS is needed; Next.js compiles that
 destination into the build, so it is `127.0.0.1:8000` inside the container. Splitting them apart would need
 a different build. Workers are separate, and that is the split that matters for capacity.
+
+## Database roles
+
+The platform connects to PostgreSQL (15 or later) as two roles. Create them, and the database, once,
+as an administrator:
+
+```sql
+CREATE ROLE ctem_owner LOGIN PASSWORD '<owner password>';
+CREATE ROLE ctem_app   LOGIN PASSWORD '<app password>' NOSUPERUSER NOBYPASSRLS;
+CREATE DATABASE ctem OWNER ctem_owner;
+```
+
+| Role | Setting | Used for |
+| --- | --- | --- |
+| `ctem_owner` | `CTEM_MIGRATION_DATABASE_URL` | Owns the schema: migrations, and `delete-organization` |
+| `ctem_app` | `CTEM_DATABASE_URL` | Every request and job. Not an owner and without `BYPASSRLS`, so row-level security applies to it |
+
+Migrations grant `ctem_app` its table privileges, and refuse to run if it does not exist. To use another
+name, set `CTEM_APP_DB_ROLE` for the migration. Docker Compose creates both roles itself
+(`infrastructure/docker/postgres/10-roles.sh`).
 
 ## Topology
 
@@ -61,25 +82,62 @@ docker compose logs -f app worker
 ```
 
 `migrate` runs first and must complete; `app` serves on port 3000 and `worker` takes jobs. Put a
-TLS-terminating reverse proxy in front of port 3000 and keep `CTEM_COOKIE_SECURE=true`.
+TLS-terminating reverse proxy in front of port 3000 (see [HTTPS](#https)). The first organization is
+created at `/register`, or with `docker compose run --rm app python -m app.cli create-organization …`.
 
 ## Kubernetes
 
-1. Provision PostgreSQL and Redis, and create the two database roles (README, Database setup).
+1. Provision PostgreSQL and Redis, and create the database and its two roles ([Database roles](#database-roles)).
 2. Create `ctem-secrets` from your secret manager; edit `ctem-config` for your hostname and storage.
 3. `kubectl apply -f infrastructure/kubernetes/ctem.yaml`.
+4. Create the first organization. Self-service registration is off in these manifests, so do it from the CLI,
+   which prints a one-time link where the administrator sets a password:
+   ```bash
+   kubectl -n ctem exec deploy/ctem -- python -m app.cli create-organization "Acme" admin@acme.example
+   ```
 
 The manifests are the same image three times, differing only in `args`: a `migrate` Job, a `ctem`
-Deployment running `serve`, and a `ctem-worker` Deployment running `worker`. The Job must complete before
-the Deployments roll, on the first install and on every upgrade. They run as non-root with a read-only root
-filesystem, dropped capabilities and the `restricted` Pod Security level, and have not been applied to a
-real cluster.
+Deployment running `serve`, and a `ctem-worker` Deployment running `worker`. They can be applied together:
+the `serve` and `worker` pods wait for the schema the Job creates, and `/readyz` keeps a pod out of the
+Service until the schema matches its image. A Job cannot be changed once created, so on an upgrade delete
+the finished one before applying the new image:
+
+```bash
+kubectl -n ctem delete job ctem-migrate --ignore-not-found
+kubectl apply -f infrastructure/kubernetes/ctem.yaml
+```
+
+The pods run as non-root with a read-only root filesystem, dropped capabilities and the `restricted` Pod
+Security level. The manifests have not been applied to a real cluster.
 
 ## Migrations
 
-`migrate` is a separate role on purpose. The entrypoint will run migrations at start-up if
-`CTEM_AUTO_MIGRATE=true`, which is convenient for one container and wrong for several: two replicas
-starting together would migrate at the same time. Use the Job, or an init container.
+| Role | At start-up |
+| --- | --- |
+| `migrate` | Waits for the database, applies migrations, exits |
+| `all` | Waits for the database and applies migrations, then starts |
+| `serve`, `worker` | Never migrates. Waits for the schema to reach this image's version, then starts |
+
+Migrations run under a PostgreSQL advisory lock, so containers that start together take turns: the second
+waits, then finds nothing left to apply. Several `all` replicas are therefore safe, though a `migrate` Job
+or Compose service is the clearer arrangement once there is more than one container.
+
+A role that waits gives up after `CTEM_SCHEMA_WAIT_SECONDS` (default 300) and exits with a message naming
+the `migrate` role, so a missed migration shows up as a container that will not start, not as errors in the
+browser. If the API does meet an unmigrated database, it answers `503 schema_not_ready` and logs
+`database_schema_not_ready`. `CTEM_AUTO_MIGRATE=true` or `false` overrides a role's default.
+
+An image older than the database (a rollback) starts without migrating, because migrations add columns and
+tables before a later release removes the old ones. `python -m app.db.schema status` prints where the
+database stands.
+
+## HTTPS
+
+With `CTEM_ENV=production` the session cookie is always `Secure`. Browsers accept a `Secure` cookie over
+plain HTTP only from `localhost`; from any other address over HTTP they drop it, and sign-in succeeds but
+returns to the login page. Serve the platform over HTTPS (an ingress, a load balancer or a reverse proxy
+terminating TLS in front of port 3000), and set `CTEM_PUBLIC_BASE_URL` to that `https://` address, which
+emailed and printed links use.
 
 ## Client addresses
 
@@ -100,7 +158,7 @@ For repository analysis, mount checkouts read-only under a directory and set `CT
 - Metrics: `/metrics` on the API (`ctem_http_requests_total`, `ctem_http_request_duration_seconds`) and on workers when `CTEM_WORKER_METRICS_PORT` is set (`ctem_jobs_total`, `ctem_jobs_running`). Protect `/metrics` at the ingress.
 - Tracing: set `CTEM_OTEL_EXPORTER_OTLP_ENDPOINT` to an OTLP/HTTP collector to enable FastAPI tracing.
 - `infrastructure/monitoring/` contains a Prometheus scrape config, alert rules and a Grafana dashboard.
-- Health: `/healthz` (liveness) and `/readyz` (database and Redis). Integration health and threat-intel sync state are visible in the UI and API.
+- Health: `/healthz` (liveness) and `/readyz` (database, schema version and Redis). Integration health and threat-intel sync state are visible in the UI and API.
 
 ## Backup and recovery
 
@@ -161,14 +219,14 @@ with `read:packages`.
 
 ## Upgrades
 
-Run `alembic upgrade head` (the `migrate` service or Job) before starting new API and worker versions. Migrations are transactional. Downgrades are provided for the initial schema but should not be relied on for data-bearing releases; restore from backup instead.
+Run the `migrate` role (the Compose service or the Kubernetes Job) for the new version; a single `all` container does this itself when it restarts on the new image. `serve` and `worker` containers on the new image wait until it has finished. Migrations are transactional. Downgrades are provided for the initial schema but should not be relied on for data-bearing releases; restore from backup instead.
 
 ## Hardening checklist
 
 - [ ] `CTEM_ENV=production`, unique `CTEM_SECRET_KEY` and `CTEM_ENCRYPTION_KEYS` from a secret manager
 - [ ] TLS at the ingress; `CTEM_COOKIE_SECURE=true`
 - [ ] Application database role is not owner, not superuser, no `BYPASSRLS`
-- [ ] `CTEM_ALLOW_REGISTRATION=false` after onboarding
+- [ ] `CTEM_ALLOW_REGISTRATION=false` after onboarding (further organizations: `python -m app.cli create-organization`)
 - [ ] Redis configured; `/metrics` and `/api/docs` not publicly reachable
 - [ ] `CTEM_ALLOW_PRIVATE_TARGETS` left `false` unless internal assessment is intended
 - [ ] MFA enrolled for administrators

@@ -116,37 +116,79 @@ jobs:
           CREATE ROLE ctem_app LOGIN PASSWORD 'app_ci' NOSUPERUSER NOBYPASSRLS;
           CREATE DATABASE ctem OWNER ctem_owner;
           SQL
-      - name: Every role of the production image works
+      # A first install as an operator does it: the image's default command on an empty database, with no
+      # separate migrate step, then an organization created and signed in to. Containers use the bridge
+      # network (so several can publish the same ports) and reach PostgreSQL on the runner via the host.
+      - name: Every role of the production image works, from an empty database
         run: |
           set -eux
           keys=$(docker run --rm ctem:ci python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+          db=host.docker.internal:5432/ctem
           cat > /tmp/ctem.env <<EOF
           CTEM_ENV=production
-          CTEM_DATABASE_URL=postgresql+psycopg://ctem_app:app_ci@127.0.0.1:5432/ctem
-          CTEM_MIGRATION_DATABASE_URL=postgresql+psycopg://ctem_owner:owner_ci@127.0.0.1:5432/ctem
+          CTEM_DATABASE_URL=postgresql+psycopg://ctem_app:app_ci@$db
+          CTEM_MIGRATION_DATABASE_URL=postgresql+psycopg://ctem_owner:owner_ci@$db
           CTEM_SECRET_KEY=$(openssl rand -hex 32)
           CTEM_ENCRYPTION_KEYS=$keys
           EOF
+          run() { docker run --add-host host.docker.internal:host-gateway --env-file /tmp/ctem.env "$@"; }
+          up() { for i in $(seq 1 90); do curl -sf -o /dev/null "$1" && return 0; sleep 2; done; return 1; }
+          dump() { for c in early a1 a2 worker; do echo "--- $c"; docker logs "$c" 2>&1 | tail -60 || true; done; }
+          trap dump EXIT
 
-          docker run --rm --network host --env-file /tmp/ctem.env ctem:ci migrate
+          # A scaled role never migrates. On an empty database it gives up, naming the migrate role.
+          # (`! cmd` never fails a step under set -e, so expected failures are tested with `if`.)
+          if run --rm -e CTEM_SCHEMA_WAIT_SECONDS=6 ctem:ci worker > /tmp/worker.log 2>&1; then exit 1; fi
+          cat /tmp/worker.log
+          grep -q "migrate role" /tmp/worker.log
 
-          docker run -d --name prod --network host --env-file /tmp/ctem.env ctem:ci all
-          for i in $(seq 1 60); do curl -sf -o /dev/null http://127.0.0.1:3000/login && break; sleep 2; done
-          docker logs prod
-          curl -sf -o /dev/null http://127.0.0.1:8000/healthz                     # the API answers
-          curl -sf -o /dev/null http://127.0.0.1:3000/login                       # the web tier serves
+          # Started before anything has migrated (a Kubernetes pod beside its Job), serve waits instead.
+          run -d --name early -p 3002:3000 ctem:ci serve
+          sleep 10
+          docker logs early 2>&1 | grep -q "waiting: the database schema has not been created"
+          if curl -sf -o /dev/null http://127.0.0.1:3002/login; then exit 1; fi
+
+          # Two default containers on that empty database at once: both migrate, one at a time.
+          run -d --name a1 -p 3000:3000 -p 8000:8000 ctem:ci
+          run -d --name a2 -p 3001:3000 ctem:ci
+          up http://127.0.0.1:3000/login
+          up http://127.0.0.1:3001/login
+          up http://127.0.0.1:3002/login                                          # and the waiting one started
+          test "$( (docker logs a1; docker logs a2) 2>&1 | grep -c 'Running upgrade 0006 -> 0007')" = 1
+          curl -sf http://127.0.0.1:8000/readyz | grep -q '"schema":"ok"'
           # 401 rather than 502: the web tier really is proxying /api/* to the API in the same container.
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/v1/auth/me)" = 401
-          docker logs prod 2>&1 | grep -q "\[ctem .*\] worker"                  # the worker started too
-          docker rm -f prod
+          docker logs a1 2>&1 | grep -q "\[ctem .*\] worker"                    # the worker started too
 
-          docker run -d --name worker --network host --env-file /tmp/ctem.env ctem:ci worker
+          # Register an organization and sign in, through the web tier, as the browser does.
+          password=Correct-Horse-Battery-9
+          curl -sf -X POST http://127.0.0.1:3000/api/v1/auth/register -H 'content-type: application/json' \
+            -d "{\"organization_name\":\"CI\",\"full_name\":\"CI Admin\",\"email\":\"ci@example.com\",\"password\":\"$password\"}"
+          curl -sf -D /tmp/login.headers -o /tmp/login.json -X POST http://127.0.0.1:3000/api/v1/auth/login \
+            -H 'content-type: application/json' -d "{\"email\":\"ci@example.com\",\"password\":\"$password\"}"
+          grep -qi '^set-cookie: ctem_session=.*secure' /tmp/login.headers
+          token=$(python3 -c "import json; print(json.load(open('/tmp/login.json'))['access_token'])")
+          curl -sf http://127.0.0.1:3001/api/v1/auth/me -H "authorization: Bearer $token" | grep -q ci@example.com
+
+          # With registration off, the first organization comes from the CLI and its one-time link.
+          run --rm -e CTEM_ALLOW_REGISTRATION=false ctem:ci \
+            python -m app.cli create-organization "CI Bootstrap" boot@example.com > /tmp/bootstrap.out
+          cat /tmp/bootstrap.out
+          link=$(grep -o 'token=[A-Za-z0-9_-]*' /tmp/bootstrap.out | head -1 | cut -d= -f2)
+          curl -sf -X POST http://127.0.0.1:3000/api/v1/auth/password/reset -H 'content-type: application/json' \
+            -d "{\"token\":\"$link\",\"new_password\":\"$password\"}"
+          curl -sf -o /dev/null -X POST http://127.0.0.1:3000/api/v1/auth/login -H 'content-type: application/json' \
+            -d "{\"email\":\"boot@example.com\",\"password\":\"$password\"}"
+
+          # The worker role on its own, now that the schema exists, keeps running.
+          run -d --name worker ctem:ci worker
           sleep 15
           docker ps --filter name=worker --filter status=running --format '{{.Names}}' | grep -qx worker
-          docker rm -f worker
 
-          ! docker run --rm ctem:ci not-a-role                                    # an unknown role fails
-          docker run --rm --network host --env-file /tmp/ctem.env ctem:ci python -c "import app.main"  # a command still runs
+          trap - EXIT
+          docker rm -f early a1 a2 worker
+          if docker run --rm ctem:ci not-a-role; then exit 1; fi                  # an unknown role fails
+          run --rm ctem:ci python -c "import app.main"                            # a command still runs
 
       # The demo image is built and tested here but never published: it bundles PostgreSQL and seeds
       # shared accounts, and Render builds it from this repository itself.

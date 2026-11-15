@@ -1,6 +1,9 @@
 """Operational commands.
 
-    python -m app.cli grant-super-admin <email>   promote an existing user to the platform super administrator role
+    python -m app.cli create-organization <name> <admin-email> [--name <full name>]
+                                                  create an organization and its administrator, and print a
+                                                  one-time link for the administrator to set a password
+    python -m app.cli grant-super-admin <email>  promote an existing user to the platform super administrator role
     python -m app.cli verify-audit <org-slug>     recompute an organization's audit hash chain
     python -m app.cli rotate-secrets              re-encrypt stored secrets with the first key in CTEM_ENCRYPTION_KEYS
     python -m app.cli run-pending                 execute queued jobs once in this process (no scheduler)
@@ -22,6 +25,37 @@ from app.core.security import _fernet
 from app.db.session import system_session
 from app.domains.audit import service as audit
 from app.models import Integration, Organization, Role, RolePermission, User
+
+
+def create_organization_cmd(name: str, email: str, full_name: str | None) -> None:
+    """The first organization on an installation where self-service registration is off. The
+    administrator sets a password through a one-time link, valid for 7 days, which is printed here and
+    also emailed when SMTP is configured."""
+    from app.core.config import get_settings
+    from app.core.errors import Conflict
+    from app.core.security import hash_password, new_token
+    from app.domains.auth.service import create_organization, issue_invitation
+
+    email = email.lower().strip()
+    if not name.strip() or "@" not in email:
+        raise SystemExit("Usage: create-organization <organization name> <admin email> [--name <full name>]")
+    with system_session() as db:
+        try:
+            # No usable password until the link is followed: a random one that nobody knows.
+            user = create_organization(db, organization_name=name, email=email, full_name=full_name or email.split("@")[0],
+                                       password_hash=hash_password(new_token(32)))
+        except Conflict:
+            raise SystemExit(f"A user with email {email} already exists") from None
+        org_id = user.organization_id
+        slug = db.execute(select(Organization.slug).where(Organization.id == org_id)).scalar_one()
+        audit.record(db, organization_id=org_id, action="organization.created", actor_email="cli",
+                     entity_type="organization", entity_id=org_id, data={"administrator": email})
+        link = issue_invitation(db, user)
+    print(f"Created organization {name.strip()} ({slug}) with administrator {email}.")
+    print(f"Set the administrator's password within 7 days at:\n\n  {link}\n")
+    base = get_settings().public_base_url
+    if base.startswith("http://localhost"):
+        print(f"The link uses CTEM_PUBLIC_BASE_URL ({base}); set it to the platform's real address if that is wrong.")
 
 
 def grant_super_admin(email: str) -> None:
@@ -146,7 +180,9 @@ def delete_organization(slug: str, confirm: str) -> None:
 
 def main() -> None:
     args = sys.argv[1:]
-    if args[:1] == ["grant-super-admin"] and len(args) == 2:
+    if args[:1] == ["create-organization"] and len(args) in (3, 5) and (len(args) == 3 or args[3] == "--name"):
+        create_organization_cmd(args[1], args[2], args[4] if len(args) == 5 else None)
+    elif args[:1] == ["grant-super-admin"] and len(args) == 2:
         grant_super_admin(args[1])
     elif args[:1] == ["verify-audit"] and len(args) == 2:
         verify_audit(args[1])

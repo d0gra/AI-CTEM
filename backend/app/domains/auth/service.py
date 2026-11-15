@@ -69,6 +69,28 @@ def create_builtin_roles(db: Session, organization_id: uuid.UUID) -> dict[str, R
     return roles
 
 
+def create_organization(db: Session, *, organization_name: str, email: str, full_name: str, password_hash: str) -> User:
+    """An organization, its built-in roles and default policies, and its first administrator."""
+    if db.execute(select(User.id).where(User.email == email)).first():
+        # Do not reveal which addresses are registered beyond a generic conflict.
+        raise Conflict("Registration could not be completed with these details")
+    org = Organization(name=organization_name.strip(), slug=_slugify(organization_name))
+    db.add(org)
+    db.flush()
+    roles = create_builtin_roles(db, org.id)
+    user = User(organization_id=org.id, email=email, full_name=full_name.strip(),
+                password_hash=password_hash, role_id=roles["org_admin"].id)
+    db.add(user)
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        raise Conflict("Registration could not be completed with these details") from exc
+    from app.domains.policy.service import install_default_policies
+
+    install_default_policies(db, org.id)
+    return user
+
+
 def register_organization(*, organization_name: str, email: str, full_name: str, password: str) -> User:
     settings = get_settings()
     if not settings.allow_registration:
@@ -76,27 +98,10 @@ def register_organization(*, organization_name: str, email: str, full_name: str,
     email = email.lower().strip()
     validate_password(password, email)
     with system_session() as db:
-        if db.execute(select(User.id).where(User.email == email)).first():
-            # Do not reveal which addresses are registered beyond a generic conflict.
-            raise Conflict("Registration could not be completed with these details")
-        org = Organization(name=organization_name.strip(), slug=_slugify(organization_name))
-        db.add(org)
-        db.flush()
-        roles = create_builtin_roles(db, org.id)
-        user = User(
-            organization_id=org.id, email=email, full_name=full_name.strip(),
-            password_hash=hash_password(password), role_id=roles["org_admin"].id,
-        )
-        db.add(user)
-        try:
-            db.flush()
-        except IntegrityError as exc:
-            raise Conflict("Registration could not be completed with these details") from exc
-        from app.domains.policy.service import install_default_policies
-
-        install_default_policies(db, org.id)
-        audit.record(db, organization_id=org.id, action="organization.registered", actor_user_id=user.id,
-                     actor_email=email, entity_type="organization", entity_id=org.id)
+        user = create_organization(db, organization_name=organization_name, email=email, full_name=full_name,
+                                   password_hash=hash_password(password))
+        audit.record(db, organization_id=user.organization_id, action="organization.registered", actor_user_id=user.id,
+                     actor_email=email, entity_type="organization", entity_id=user.organization_id)
         issue_email_verification(db, user)
         db.refresh(user)
         return user

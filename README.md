@@ -66,7 +66,7 @@ SCOPE ─► DISCOVER ─► INVENTORY ─► ASSESS ─► PRIORITIZE ─► AT
 | **Access control** | 9 built-in roles, 33 permissions, custom roles, TOTP MFA |
 | **Governance** | 13 default policies with exceptions; 10 report types in PDF, XLSX, CSV and JSON |
 | **API** | 121 REST paths (152 operations) with OpenAPI documentation |
-| **Tests** | 124 backend against real PostgreSQL, 26 frontend, 32 CLI, 12 browser, plus lint, types, SAST and dependency audit |
+| **Tests** | 131 backend against real PostgreSQL, 26 frontend, 32 CLI, 12 browser, plus lint, types, SAST and dependency audit |
 
 ---
 
@@ -144,18 +144,24 @@ Threat model: [docs/security.md](docs/security.md). Reporting: [SECURITY.md](SEC
 
 ## Deploy
 
-**One image runs the whole platform.** The role is the command.
+**One image runs the whole platform.** The role is the command: `all` (the default) runs the web server, API and worker in one container; `serve` and `worker` split them so each can be scaled; `migrate` applies database migrations and exits. PostgreSQL, Redis and object storage are external.
 
-```bash
-docker pull ghcr.io/d0gra/ai-ctem:0.3.0
+A first install on one host:
 
-docker run ghcr.io/d0gra/ai-ctem:0.3.0 migrate   # apply database migrations, then exit
-docker run ghcr.io/d0gra/ai-ctem:0.3.0 all       # web, API and worker in this container (the default)
-docker run ghcr.io/d0gra/ai-ctem:0.3.0 serve     # web and API only, when workers run separately
-docker run ghcr.io/d0gra/ai-ctem:0.3.0 worker    # background jobs only
-```
+1. **Create the database and its two roles.** `ctem_owner` owns the schema and runs migrations; `ctem_app` serves requests and cannot bypass row-level security. The SQL is in [docs/deployment.md](docs/deployment.md#database-roles).
+2. **Start the platform.** `all` waits for the database and applies migrations before it starts serving, on this first run and after every upgrade:
+   ```bash
+   docker run -d --env-file .env -p 3000:3000 ghcr.io/d0gra/ai-ctem:0.3.0
+   ```
+3. **Create the first organization.** Register at `/register`, or, with `CTEM_ALLOW_REGISTRATION=false`, from the CLI. It prints a one-time link where the administrator sets a password:
+   ```bash
+   docker run --rm --env-file .env ghcr.io/d0gra/ai-ctem:0.3.0 python -m app.cli create-organization "Acme" admin@acme.example
+   ```
+4. **Serve it over HTTPS.** In production the session cookie is `Secure`, so a browser drops it over plain HTTP anywhere except `localhost`, and sign-in returns to the login page. Put a TLS-terminating proxy in front of port 3000.
 
-PostgreSQL, Redis and object storage are external. The web server and the API always run together, because the browser talks only to the web tier and its `/api/*` proxy destination is compiled into the build; workers are what you scale separately. Released images carry build provenance and an SBOM attestation:
+With several containers, run `migrate` once per release, then start `serve` and `worker`. They never migrate; they wait for the schema to reach their version, and `/readyz` reports not ready until it has.
+
+The web server and the API always run together, because the browser talks only to the web tier and its `/api/*` proxy destination is compiled into the build; workers are what you scale separately. Released images carry build provenance and an SBOM attestation:
 
 ```bash
 gh attestation verify oci://ghcr.io/d0gra/ai-ctem:0.3.0 --owner d0gra
@@ -164,7 +170,7 @@ gh attestation verify oci://ghcr.io/d0gra/ai-ctem:0.3.0 --owner d0gra
 | Target | How |
 | --- | --- |
 | **Single host** | `cp .env.example .env`, then `docker compose up -d` — PostgreSQL, Redis, migrations, the app and a worker |
-| **Kubernetes** | `kubectl apply -f infrastructure/kubernetes/ctem.yaml` — the same image as a migrate Job, a `serve` Deployment and a `worker` Deployment |
+| **Kubernetes** | `kubectl apply -f infrastructure/kubernetes/ctem.yaml` — the same image as a migrate Job, a `serve` Deployment and a `worker` Deployment ([steps](docs/deployment.md#kubernetes)) |
 | **Public demo** | `Dockerfile.demo` is a separate all-in-one image with PostgreSQL bundled, sized for Render's free plan ([docs/demo.md](docs/demo.md)) |
 
 Scaling, migrations, client addresses, backup, retention and the hardening checklist: **[docs/deployment.md](docs/deployment.md)**.

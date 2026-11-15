@@ -221,19 +221,21 @@ aictem discover . --upload --gate high</pre>
     <pre>docker pull ghcr.io/d0gra/ai-ctem:0.3.0
 
 docker run ghcr.io/d0gra/ai-ctem:0.3.0 migrate   <span class="c"># apply database migrations, then exit</span>
-docker run ghcr.io/d0gra/ai-ctem:0.3.0 all       <span class="c"># web, API and worker in this container</span>
+docker run ghcr.io/d0gra/ai-ctem:0.3.0 all       <span class="c"># migrate, then web, API and worker in this container</span>
 docker run ghcr.io/d0gra/ai-ctem:0.3.0 serve     <span class="c"># web and API, with workers elsewhere</span>
 docker run ghcr.io/d0gra/ai-ctem:0.3.0 worker    <span class="c"># background jobs only</span></pre>
     <p class="lede">
-      Released images carry build provenance and an SBOM attestation. Compose and Kubernetes manifests are in
-      the repository; the Kubernetes layout is the same image three times, differing only in its arguments.
+      A single <code>all</code> container migrates its own database on start-up; scaled <code>serve</code> and
+      <code>worker</code> containers wait for the <code>migrate</code> role instead. Released images carry build
+      provenance and an SBOM attestation. Compose and Kubernetes manifests are in the repository; the
+      Kubernetes layout is the same image three times, differing only in its arguments.
     </p>
     <div class="stats">
       <div class="stat"><b>13</b><span>assessment engines</span></div>
       <div class="stat"><b>26</b><span>connectors</span></div>
       <div class="stat"><b>33</b><span>asset types</span></div>
       <div class="stat"><b>121</b><span>REST paths</span></div>
-      <div class="stat"><b>194</b><span>automated tests</span></div>
+      <div class="stat"><b>201</b><span>automated tests</span></div>
     </div>
   </div>
 </section>

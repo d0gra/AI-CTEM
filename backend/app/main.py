@@ -21,6 +21,7 @@ from app.core.config import get_settings
 from app.core.context import RequestContext, set_request_context
 from app.core.errors import AppError, RateLimited
 from app.core.logging import configure_logging, get_logger
+from app.db import schema
 from app.db.session import dispose_engine, get_engine
 
 log = get_logger("ctem.api")
@@ -42,6 +43,9 @@ DOCS_CSP = (
     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https://fastapi.tiangolo.com; "
     "frame-ancestors 'none'"
 )
+
+
+SCHEMA_NOT_READY = {"42P01", "42703"}  # undefined_table, undefined_column: migrations have not been applied
 
 
 def _error(status: int, code: str, message: str, details: dict | None = None) -> JSONResponse:
@@ -142,6 +146,11 @@ def create_app() -> FastAPI:
         # RLS WITH CHECK violations surface here; never leak SQL to the client.
         if isinstance(exc, DataError):  # malformed input that reached the database (e.g. NUL bytes, out-of-range values)
             return _error(422, "validation_failed", "The request contains a value that cannot be processed")
+        if getattr(exc.orig, "sqlstate", None) in SCHEMA_NOT_READY:
+            log.error("database_schema_not_ready", error=str(exc.orig)[:300],
+                      hint="the database has not been migrated to this version: run the image's migrate role")
+            return _error(503, "schema_not_ready", "The database has not been set up for this version of the "
+                          "platform. An administrator needs to run the database migrations (the migrate role).")
         log.error("database_error", error=str(exc.orig)[:300])
         if "row-level security" in str(exc.orig):
             return _error(403, "forbidden", "Operation not permitted for this organization")
@@ -158,16 +167,23 @@ def create_app() -> FastAPI:
 
     @app.get("/readyz", include_in_schema=False)
     def readiness() -> JSONResponse:
-        checks: dict[str, str] = {}
+        checks: dict[str, str] = {"database": "error", "schema": "unknown"}
         try:
             with get_engine().connect() as conn:
                 conn.execute(text("select 1"))
                 checks["database"] = "ok"
+                status, detail = schema.state(conn)
+                # Not ready until migrated: a pod that starts beside the migrate Job takes no traffic
+                # until the Job has finished.
+                checks["schema"] = "ok" if status in schema.READY_STATES else f"{status}: {detail}"
         except Exception as exc:  # readiness must report, not raise
-            checks["database"] = f"error: {type(exc).__name__}"
+            if checks["database"] != "ok":
+                checks["database"] = f"error: {type(exc).__name__}"
+            else:
+                checks["schema"] = f"error: {type(exc).__name__}"
         redis_state = ratelimit.redis_healthy()
         checks["redis"] = "not_configured" if redis_state is None else ("ok" if redis_state else "error")
-        ok = checks["database"] == "ok" and checks["redis"] != "error"
+        ok = checks["database"] == "ok" and checks["schema"] == "ok" and checks["redis"] != "error"
         return JSONResponse(status_code=200 if ok else 503, content={"status": "ready" if ok else "degraded", "checks": checks})
 
     @app.get("/metrics", include_in_schema=False)
