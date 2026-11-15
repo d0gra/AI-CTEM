@@ -259,7 +259,7 @@ def reap_stale(now: datetime | None = None) -> int:
     return reaped
 
 
-def run_pending(limit: int = 100, worker_id: str = "inline") -> list[tuple[str, str]]:
+def run_pending(limit: int = 10_000, worker_id: str = "inline") -> list[tuple[str, str]]:
     """Run queued jobs in-process until the queue is empty. Used by tests and the CLI."""
     outcomes = []
     for _ in range(limit):
