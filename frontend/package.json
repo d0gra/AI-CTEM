@@ -1,6 +1,6 @@
 {
   "name": "ctem-frontend",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@hookform/resolvers": "^7.0.5",
@@ -26,6 +27,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@tailwindcss/turbopack": "4.3.3",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",

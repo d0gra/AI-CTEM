@@ -8,6 +8,15 @@ resolution-markers = [
 ]
 
 [[package]]
+name = "aictem"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/30/e4/50ac85be87970e3e9a103030fd5011f317b6be8e9af803f725ce95666858/aictem-0.1.0.tar.gz", hash = "sha256:b5e19c68faa6848b1abb3c758556b8133f65afc62b1080bca2ea9606082d2bcc", size = 62748, upload-time = "2026-11-13T17:41:59.036Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1d/cf/4c3bc683d0c264da9ab644e20695be0fda770e019dd96dd4eff49f58efd2/aictem-0.1.0-py3-none-any.whl", hash = "sha256:7346000d87ca93ce403249abbb679a1fdfd5b19d87607adac838d849c4f191dd", size = 64551, upload-time = "2026-11-13T17:41:57.769Z" },
+]
+
+[[package]]
 name = "aiosmtpd"
 version = "1.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -677,9 +686,10 @@ wheels = [
 
 [[package]]
 name = "ctem-backend"
-version = "0.1.0"
+version = "0.3.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "aictem" },
     { name = "alembic" },
     { name = "anthropic" },
     { name = "argon2-cffi" },
@@ -721,6 +731,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aictem", specifier = ">=0.1.0,<0.2" },
     { name = "alembic", specifier = ">=1.20.1" },
     { name = "anthropic", specifier = ">=2.8.0" },
     { name = "argon2-cffi", specifier = ">=25.1.0" },

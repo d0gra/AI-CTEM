@@ -13,6 +13,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_
 from sqlalchemy import text
 from sqlalchemy.exc import DataError, DBAPIError, IntegrityError
 
+from app import __version__
 from app.api.router import api_router
 from app.core import ratelimit
 from app.core.clientip import client_ip
@@ -68,7 +69,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
         title="CTEM Platform API",
-        version="0.1.0",
+        version=__version__,
         description="Continuous Threat Exposure Management with AI exposure management.",
         lifespan=lifespan,
         docs_url="/api/docs",

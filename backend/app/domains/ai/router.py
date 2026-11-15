@@ -5,6 +5,7 @@ import uuid
 from datetime import timedelta
 from typing import Literal
 
+from aictem.catalog import TECHS as SIGNATURES
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
@@ -17,7 +18,6 @@ from app.domains.assets import scope as scope_service
 from app.domains.assets.service import AssetSpec, upsert_asset
 from app.domains.policy.views import HIGH_IMPACT_CAPABILITIES, agent_tool_stats
 from app.domains.risk.policy import load_policy, save_policy
-from app.engines.ai.signatures import SIGNATURES
 from app.engines.ai_redteam.catalog import PROFILES, RELATED_ENGINES, TESTS
 from app.engines.ai_redteam.runner import RedTeamConfig
 from app.integrations.llm.client import LlmConfig

@@ -1,0 +1,114 @@
+# Publishes the platform's container images when a tag like v0.3.0 is pushed.
+#
+# Images go to GitHub Container Registry under ghcr.io/<owner>/ai-ctem/{api,worker,web,demo}, signed in
+# with the workflow's own GITHUB_TOKEN, so no registry credential is stored. Each image carries build
+# provenance and an SBOM attestation. The CLI is released separately (release-cli.yml, cli-v* tags).
+name: Release platform
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build the images without pushing them
+        type: boolean
+        default: true
+
+permissions: { contents: read }
+
+env:
+  REGISTRY: ghcr.io
+  PUBLISH: ${{ startsWith(github.ref, 'refs/tags/') && !inputs.dry_run }}
+
+jobs:
+  version:
+    name: Check versions
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      repository: ${{ steps.version.outputs.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        name: Every component declares the same version, and the tag matches it
+        run: |
+          version=$(python3 scripts/check_versions.py)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "repository=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')/ai-ctem" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match version $version; update the version files or retag"
+            exit 1
+          fi
+
+  images:
+    name: Image ${{ matrix.name }}
+    needs: version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write      # push to ghcr.io with GITHUB_TOKEN
+      id-token: write      # provenance attestation
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: api, context: backend, file: backend/Dockerfile, target: api }
+          - { name: worker, context: backend, file: backend/Dockerfile, target: worker }
+          - { name: web, context: frontend, file: frontend/Dockerfile, target: "" }
+          - { name: demo, context: ., file: Dockerfile.demo, target: "" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: env.PUBLISH == 'true'
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ needs.version.outputs.repository }}/${{ matrix.name }}
+          tags: |
+            type=raw,value=${{ needs.version.outputs.version }}
+            type=raw,value=latest,enable=${{ env.PUBLISH == 'true' }}
+          labels: |
+            org.opencontainers.image.title=CTEM Platform ${{ matrix.name }}
+            org.opencontainers.image.version=${{ needs.version.outputs.version }}
+            org.opencontainers.image.licenses=MIT
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          target: ${{ matrix.target }}
+          push: ${{ env.PUBLISH == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: ${{ env.PUBLISH == 'true' && 'mode=max' || 'false' }}
+          sbom: ${{ env.PUBLISH == 'true' }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,scope=${{ matrix.name }},mode=max
+      - uses: actions/attest-build-provenance@v2
+        if: env.PUBLISH == 'true'
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ needs.version.outputs.repository }}/${{ matrix.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  github-release:
+    name: GitHub release
+    needs: [version, images]
+    if: startsWith(github.ref, 'refs/tags/') && !inputs.dry_run
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Release notes from the changelog
+        run: python3 scripts/check_versions.py --notes > notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: CTEM Platform ${{ needs.version.outputs.version }}
+          body_path: notes.md

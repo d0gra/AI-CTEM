@@ -6,19 +6,22 @@ Taxonomies: OWASP Top 10 for LLM Applications (2025) is the primary classificati
 
 ## Discovery
 
-`repository_analysis` reads a local checkout (never executes it) and records:
+`repository_analysis` reads a local checkout (never executes it) by running the [`aictem`](../cli/README.md) library, the same code as the `aictem discover` CLI. A repository therefore gives the same inventory whether a worker reads it or a pipeline uploads one, and both go through one ingestion path (`backend/app/engines/inventory_import.py`).
 
 | Signal | How | Result |
 | --- | --- | --- |
-| Dependencies | `requirements*.txt`, `pyproject.toml`, `uv.lock`, `poetry.lock`, `package.json`, `package-lock.json` | AI technology asset per repository; pinned packages checked against OSV |
-| Imports | Python and JS/TS import statements | Detection record with file path |
-| Endpoints | Provider hostnames and well-known ports in source and config | Detection record |
-| Configuration | Provider environment variable names | Detection record |
-| Credentials | Provider key formats (Anthropic, OpenAI, Hugging Face, Google, NVIDIA, Pinecone, Replicate, Groq) | Critical finding; only the public prefix and location are stored; placeholders are ignored |
-| MCP configuration | `.mcp.json`, `mcp.json`, `claude_desktop_config.json`, editor MCP files | MCP server assets and configuration findings |
-| Model artifacts | 16 file extensions | Model assets with digest and format; serialization findings |
+| Dependencies | 21 manifest and lockfile formats across 8 ecosystems | Package assets (purl); AI technology asset per repository; pinned packages checked against OSV by the platform |
+| Imports and code | Python, JavaScript/TypeScript, Go and notebooks; matches count only in real code, not in strings or comments | Detection records with file and line |
+| Agents and tools | LangChain/LangGraph, CrewAI, AutoGen, OpenAI Agents SDK, Pydantic AI, smolagents, Semantic Kernel, Google ADK, Strands, Vercel AI SDK, Mastra | Agent assets with their tools and capabilities; a finding for high-impact tools with no approval step |
+| Retrieval | Vector store clients with retrievers, loaders and embeddings | RAG application and vector database assets |
+| Endpoints and configuration | Provider hostnames, inference ports, environment variable names, containers, IaC | Detection records; inference endpoint assets |
+| Credentials | Provider and cloud key formats | Finding with the public prefix, length and a fingerprint; the value is never stored; placeholders are ignored |
+| MCP | Client configurations of the common editors and agents, and servers implemented in the repository | MCP client and server assets with their tools; configuration findings |
+| Model artifacts | Pickle, PyTorch, safetensors, ONNX, GGUF, Keras and more, disassembled without loading | Model assets with digest and format; serialization findings |
 
-26 technologies are recognised (`backend/app/engines/ai/signatures.py`). `ai_endpoint_probe` finds unauthenticated OpenAI-compatible and Ollama endpoints by requesting model listings only. `nmap_scan` flags common AI service ports (Ollama, Jupyter, Qdrant, Milvus). `http_exposure` recognises Jupyter, MLflow, Open WebUI and Gradio consoles.
+Three things are decided by the platform and never taken from the scan: known vulnerabilities (OSV lookup), whether a provider is approved (`ai.shadow.unapproved_provider`, from the organization's approved list) and whether a model's provenance is verified (`ai.model.provenance_unverified`).
+
+51 technologies are recognised (`cli/src/aictem/catalog.py`). `ai_endpoint_probe` finds unauthenticated OpenAI-compatible and Ollama endpoints by requesting model listings only. `nmap_scan` flags common AI service ports (Ollama, Jupyter, Qdrant, Milvus). `http_exposure` recognises Jupyter, MLflow, Open WebUI and Gradio consoles.
 
 Cloud AI services (Bedrock, Vertex AI, Azure AI Foundry) are detected only through repository signals; there is no cloud-side AI inventory.
 

@@ -1,14 +1,12 @@
 """Static analysis of MCP server definitions and tool metadata.
 
-Used for MCP client configuration files found in repositories and for tool listings returned
-by live servers. Tool-description checks report *indicators* of poisoning: the matched text is
+Used for tool listings returned by live servers (MCP client configuration files in repositories
+are analysed by the aictem library). Tool-description checks report *indicators* of poisoning: the matched text is
 included as evidence so an analyst can judge it; nothing is declared malicious automatically.
 """
 
 import re
 import unicodedata
-
-from app.engines.ai.signatures import SECRET_PATTERNS
 
 # (indicator id, description, pattern) applied to tool names/descriptions/parameter docs.
 POISONING_INDICATORS: tuple[tuple[str, str, re.Pattern], ...] = (
@@ -80,88 +78,3 @@ def normalise_tools(tools: list) -> list[dict]:
             out.append({"name": str(t["name"])[:200], "description": description[:2000],
                         "capabilities": classify_capabilities(str(t["name"]), description), "requires_approval": False})
     return out
-
-
-def analyse_server_definition(name: str, definition: dict) -> tuple[dict, list[dict]]:
-    """Analyse one entry of an MCP client configuration (`mcpServers.<name>`).
-
-    Returns (server facts, issues). Each issue: {rule, title, severity, confidence, description,
-    remediation, evidence}.
-    """
-    issues: list[dict] = []
-    url = definition.get("url") or definition.get("serverUrl")
-    command = definition.get("command")
-    args = [str(a) for a in definition.get("args") or []]
-    env = definition.get("env") or {}
-    headers = definition.get("headers") or {}
-    transport = "stdio" if command else ("sse" if str(definition.get("type", "")).lower() == "sse" or str(url or "").rstrip("/").endswith("/sse") else "streamable_http")
-    auth = "none" if transport != "stdio" else "not_applicable"
-    if any(k.lower() == "authorization" for k in headers):
-        auth = "bearer"
-    elif any("key" in k.lower() or "token" in k.lower() for k in headers):
-        auth = "api_key"
-    elif definition.get("oauth") or definition.get("auth"):
-        auth = "oauth"
-    facts = {"transport": transport, "endpoint": url, "command": " ".join([command, *args])[:1000] if command else None,
-             "auth_type": auth if transport != "stdio" else "not_applicable",
-             "uses_tls": (str(url).startswith("https://") if url else None)}
-
-    def issue(rule, title, severity, description, remediation, evidence, confidence="firm"):
-        issues.append({"rule": rule, "title": title, "severity": severity, "confidence": confidence,
-                       "description": description, "remediation": remediation, "evidence": evidence})
-
-    if url and str(url).startswith("http://") and not re.match(r"http://(localhost|127\.0\.0\.1|\[::1\])([:/]|$)", str(url)):
-        issue("mcp.config.insecure_transport", f"MCP server '{name}' is reached over plaintext HTTP", "high",
-              "Tool calls, results and any credentials are sent unencrypted and can be read or modified in transit.",
-              "Use an https:// endpoint for remote MCP servers.", {"url": url}, "confirmed")
-    if transport != "stdio" and auth == "none":
-        issue("mcp.config.no_client_auth", f"MCP server '{name}' is configured without client authentication", "medium",
-              "The client configuration sends no Authorization header or OAuth settings. If the server accepts unauthenticated "
-              "clients, anyone who can reach it can invoke its tools. Confirm with the MCP probe.",
-              "Require OAuth 2.1 or a bearer token on the server and configure the client accordingly.", {"url": url, "headers": sorted(headers)},
-              "tentative")
-    literal_secrets = []
-    for source, mapping in (("env", env), ("headers", headers)):
-        for key, value in mapping.items() if isinstance(mapping, dict) else []:
-            value = str(value)
-            if value.startswith("${") or value.startswith("$") or not value:
-                continue  # reference to an environment variable, not a literal
-            provider_hit = next((label for _r, _p, label, pat in SECRET_PATTERNS if pat.search(value)), None)
-            sensitive_name = re.search(r"(key|token|secret|password|authorization|credential)", key, re.I)
-            if provider_hit or (sensitive_name and len(value) >= 12):
-                literal_secrets.append({"location": f"{source}.{key}", "kind": provider_hit or "credential", "length": len(value)})
-    for arg in args:
-        if any(pat.search(arg) for _r, _p, _l, pat in SECRET_PATTERNS):
-            literal_secrets.append({"location": "args", "kind": "credential", "length": len(arg)})
-    if literal_secrets:
-        issue("mcp.config.plaintext_secret", f"MCP server '{name}' configuration contains plaintext credentials", "high",
-              "Credentials are stored as literals in the configuration file instead of being referenced from the environment or a secret store.",
-              "Move the values to a secret manager or environment reference (${VAR}) and rotate the exposed credentials.",
-              {"secrets": literal_secrets}, "confirmed")
-    if command:
-        joined = " ".join([command, *args])
-        launcher = command.rsplit("/", 1)[-1]
-        if launcher in ("npx", "uvx", "bunx", "pipx") or (launcher == "docker" and "run" in args):
-            package = next((a for a in args if not a.startswith("-") and a not in ("run", "exec", "-i", "--rm")), None)
-            pinned = bool(package and (re.search(r"@\d", package) or re.search(r"==\d", package) or "@sha256:" in package or re.search(r":\d[\w.]*$", package)))
-            if package and not pinned:
-                issue("mcp.config.unpinned_server", f"MCP server '{name}' runs an unpinned package ({package})", "medium",
-                      "The server is fetched at launch without a version pin, so a compromised or replaced release runs automatically "
-                      "with the client's privileges.", "Pin an exact version or digest and review updates before adopting them.",
-                      {"command": joined[:300]}, "confirmed")
-        if re.search(r"(^|\s)sudo\s|--privileged|--cap-add[= ]ALL|-v\s+/:/|--pid[= ]host", joined):
-            issue("mcp.config.excessive_privilege", f"MCP server '{name}' is launched with elevated host privileges", "high",
-                  "The launch command grants root, privileged container mode or the host filesystem to the MCP server.",
-                  "Run MCP servers as an unprivileged user with only the mounts they need.", {"command": joined[:300]}, "confirmed")
-        if re.search(r"server-filesystem|mcp-server-filesystem|filesystem", joined, re.I):
-            broad = [a for a in args if a in ("/", "~", "$HOME", "/home", "/Users", "C:\\") or re.fullmatch(r"(/home|/Users)/[^/]+/?", a)]
-            if broad:
-                issue("mcp.config.broad_filesystem_scope", f"Filesystem MCP server '{name}' exposes a broad directory ({broad[0]})", "high",
-                      "The server grants the model read/write access to an entire home or root directory, including credentials and SSH keys.",
-                      "Restrict the allowed directories to the specific project paths required.", {"allowed_paths": broad}, "confirmed")
-    if definition.get("autoApprove") or definition.get("alwaysAllow"):
-        approved = definition.get("autoApprove") or definition.get("alwaysAllow")
-        issue("mcp.config.auto_approved_tools", f"MCP server '{name}' has tools approved without confirmation", "medium",
-              "Listed tools run without human confirmation, removing the approval step that limits prompt-injection impact.",
-              "Limit automatic approval to read-only tools.", {"auto_approved": approved if isinstance(approved, list) else True}, "confirmed")
-    return facts, issues

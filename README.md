@@ -97,7 +97,7 @@ AI systems are first-class assets, not a separate product.
 
 | Area | How it works |
 | --- | --- |
-| **Discovery** | Repository analysis recognises 26 AI technologies (providers, frameworks, vector databases, serving runtimes, MCP SDKs), committed provider keys (the value is never stored), MCP client configuration and model files. |
+| **Discovery** | Repository analysis runs the `aictem` library on a checkout, so a worker and the CLI give the same result: 51 AI technologies (providers, frameworks, vector databases, serving runtimes, MCP SDKs), agents with their tools and capabilities, RAG pipelines, MCP clients and servers, committed provider keys (the value is never stored) and model files. |
 | **Shadow AI** | Provider usage is compared with the organization's approved list. With no list set, usage is reported as *unknown* rather than *unapproved*. |
 | **Continuous posture** | Rules over agent tools and capabilities, autonomy, memory, delegation, identity, RAG document-level authorization and tenant isolation, mapped to the **OWASP LLM Top 10 (2025)**, **MITRE ATLAS** and **NIST AI RMF**. The review runs when an AI asset changes, after assessments that touch AI assets, and daily. Controls nobody has recorded on an exposed or production asset are reported, so nothing passes for lack of data. |
 | **MCP** | Static review of server definitions, plus a live probe limited to `initialize` and `*/list` calls. `tools/call` is never sent; a hard guard enforces this. |

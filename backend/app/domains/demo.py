@@ -122,10 +122,16 @@ def _write_sample_repo(root: Path) -> None:
     (root / "package.json").write_text(json.dumps(
         {"name": "sample-support-bot-ui", "version": "1.0.0", "dependencies": {"axios": "0.21.0", "lodash": "4.17.15"}}, indent=2))
     (root / "src" / "agent.py").write_text(
-        "import anthropic\nfrom langchain.agents import AgentExecutor\nimport chromadb\n\n"
-        "BASE_URL = 'https://api.openai.com/v1'\nLOCAL_MODEL = 'http://gpu-box.internal:11434'\n\n"
-        "def build_agent(tools):\n    # tools include refund_order and send_email; no approval step\n"
-        "    return AgentExecutor(tools=tools)\n")
+        "import anthropic\nfrom langchain.agents import AgentExecutor\nfrom langchain.tools import tool\nimport chromadb\n\n"
+        "BASE_URL = 'https://api.openai.com/v1'\nLOCAL_MODEL = 'http://gpu-box.internal:11434'\n\n\n"
+        "@tool\ndef refund_order(order_id: str, amount: float) -> str:\n"
+        '    """Refund the payment for an order to the customer\'s card."""\n    return billing.refund(order_id, amount)\n\n\n'
+        "@tool\ndef send_email(to: str, subject: str, body: str) -> str:\n"
+        '    """Send an email to a customer."""\n    return mailer.send(to, subject, body)\n\n\n'
+        "@tool\ndef search_orders(query: str) -> list:\n"
+        '    """Search the order history."""\n    return orders.search(query)\n\n\n'
+        "def build_agent():\n    # the model decides when to refund or email; nobody approves the call\n"
+        "    return AgentExecutor(tools=[refund_order, send_email, search_orders])\n")
     (root / ".env").write_text("ANTHROPIC_API_KEY=sk-ant-api03-" + "Zk9" * 32 + "\n")  # synthetic, provider format
     (root / ".mcp.json").write_text(json.dumps({"mcpServers": {
         "files": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/"]},

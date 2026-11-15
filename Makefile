@@ -12,11 +12,17 @@ web:           ## run the frontend on :3000
 	cd frontend && pnpm dev
 lab:           ## start the local practice targets on :8808
 	python3 scripts/lab.py
-test: test-backend test-frontend
+test: test-backend test-frontend test-cli
 test-backend:
 	cd backend && uv run pytest
 test-frontend:
 	cd frontend && pnpm test
+test-cli:
+	cd cli && uv run --with pytest pytest -q
+e2e:           ## browser tests against a demo-mode instance (E2E_BASE_URL, default http://localhost:10000)
+	cd frontend && pnpm e2e
+versions:      ## check that every component declares the same version
+	python3 scripts/check_versions.py
 lint:
 	cd backend && uv run ruff check . && cd ../frontend && pnpm lint && pnpm typecheck
 build:         ## production frontend build

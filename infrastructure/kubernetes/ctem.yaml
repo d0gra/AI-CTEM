@@ -1,5 +1,5 @@
-# Reference manifests. Build and push the three images (api, worker, web), replace the image
-# names, create the Secret from your secret manager, then: kubectl apply -f infrastructure/kubernetes/
+# Reference manifests. They use the released images (ghcr.io/d0gra/ai-ctem/{api,worker,web}); to run your
+# own builds, replace the image names. Create the Secret from your secret manager, then: kubectl apply -f infrastructure/kubernetes/
 # PostgreSQL and Redis are expected as managed services or separately operated workloads.
 apiVersion: v1
 kind: Namespace
@@ -44,7 +44,7 @@ spec:
       securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: migrate
-          image: registry.example.com/ctem/api:0.1.0
+          image: ghcr.io/d0gra/ai-ctem/api:0.3.0
           command: ["alembic", "upgrade", "head"]
           envFrom: [{ configMapRef: { name: ctem-config } }, { secretRef: { name: ctem-secrets } }]
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
@@ -64,7 +64,7 @@ spec:
       securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: api
-          image: registry.example.com/ctem/api:0.1.0
+          image: ghcr.io/d0gra/ai-ctem/api:0.3.0
           ports: [{ containerPort: 8000 }]
           envFrom: [{ configMapRef: { name: ctem-config } }, { secretRef: { name: ctem-secrets } }]
           readinessProbe: { httpGet: { path: /readyz, port: 8000 }, periodSeconds: 10 }
@@ -97,7 +97,7 @@ spec:
       securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: worker
-          image: registry.example.com/ctem/worker:0.1.0
+          image: ghcr.io/d0gra/ai-ctem/worker:0.3.0
           env: [{ name: CTEM_WORKER_METRICS_PORT, value: "9108" }]
           envFrom: [{ configMapRef: { name: ctem-config } }, { secretRef: { name: ctem-secrets } }]
           ports: [{ containerPort: 9108 }]
@@ -119,7 +119,7 @@ spec:
       securityContext: { runAsNonRoot: true, runAsUser: 1000, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: web
-          image: registry.example.com/ctem/web:0.1.0   # built with CTEM_BACKEND_URL=http://api:8000
+          image: ghcr.io/d0gra/ai-ctem/web:0.3.0   # built with CTEM_BACKEND_URL=http://api:8000
           ports: [{ containerPort: 3000 }]
           env: [{ name: CTEM_UPSTREAM_PROXY, value: "true" }]   # the Ingress controller appends the client address
           readinessProbe: { httpGet: { path: /login, port: 3000 }, periodSeconds: 10 }

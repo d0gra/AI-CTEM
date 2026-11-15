@@ -209,7 +209,8 @@ def get_finding(finding_id: uuid.UUID, db: Db, _: Principal = require("findings:
     can_retest = False
     if f.assessment_run_id:
         run = db.get(AssessmentRun, f.assessment_run_id)
-        can_retest = bool(run and db.get(Assessment, run.assessment_id))
+        source = db.get(Assessment, run.assessment_id) if run else None
+        can_retest = bool(source and source.kind != "scanner_import")  # an upload is a fixed file: see retest()
     return {
         **_out(f, asset, vuln).model_dump(),
         "description": f.description, "technical_impact": f.technical_impact, "business_impact": f.business_impact,
@@ -299,6 +300,10 @@ def retest(finding_id: uuid.UUID, db: Db, principal: Principal = require("findin
     assessment = db.get(Assessment, run.assessment_id) if run else None
     if assessment is None:
         raise Conflict("This finding has no re-runnable assessment; record a manual verification instead")
+    if assessment.kind == "scanner_import":
+        # Parsing the same stored report again would always find it again (and the stored copy is removed by retention).
+        raise Conflict("This finding came from an uploaded report, which cannot be re-run. Upload a new report from the "
+                       "scanner to verify the fix, or record a manual verification.")
     if f.status not in OPEN_STATUSES:
         raise Conflict(f"A {f.status} finding cannot be retested")
     if f.status != "pending_validation":

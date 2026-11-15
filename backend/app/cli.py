@@ -5,6 +5,11 @@
     python -m app.cli rotate-secrets              re-encrypt stored secrets with the first key in CTEM_ENCRYPTION_KEYS
     python -m app.cli run-pending                 execute queued jobs once in this process (no scheduler)
     python -m app.cli seed-demo                   create the demo organization and its accounts (CTEM_DEMO_MODE=true only)
+    python -m app.cli purge-expired               apply the retention periods now, for every organization
+    python -m app.cli export-organization <org-slug> <file.json>
+                                                  write everything stored for an organization, without credentials
+    python -m app.cli delete-organization <org-slug> --confirm <org-slug>
+                                                  permanently delete an organization and all of its data
 """
 
 import sys
@@ -58,6 +63,87 @@ def rotate_secrets() -> None:
     print(f"Re-encrypted {count} stored secrets with the primary key")
 
 
+EXPORT_SKIPPED_TABLES = {"sessions", "user_tokens", "api_tokens"}  # live credentials: of no use in an export
+EXPORT_REDACTED_COLUMNS = {"password_hash", "mfa_secret_encrypted", "credentials_encrypted", "canary_token"}
+
+
+def _organization(db, slug: str) -> Organization:
+    org = db.execute(select(Organization).where(Organization.slug == slug)).scalar_one_or_none()
+    if org is None:
+        raise SystemExit(f"No organization with slug {slug}")
+    return org
+
+
+def purge_expired() -> None:
+    from app.domains.platform.retention import purge
+
+    with system_session() as db:
+        for org in db.execute(select(Organization)).scalars():
+            print(org.slug, purge(db, org.id) or "nothing to remove")
+
+
+def export_organization(slug: str, path: str) -> None:
+    """Every row the organization owns, table by table, as JSON. Uploaded files are listed by key, not embedded."""
+    import json
+
+    from app.db.base import Base
+
+    with system_session() as db, open(path, "w", encoding="utf-8") as out:
+        org = _organization(db, slug)
+        out.write(json.dumps({"organization": {"id": str(org.id), "slug": org.slug, "name": org.name}})[:-1] + ', "tables": {')
+        first, total = True, 0
+        for table in Base.metadata.sorted_tables:
+            if "organization_id" not in table.c or table.name in EXPORT_SKIPPED_TABLES:
+                continue
+            out.write(("" if first else ",") + f"\n{json.dumps(table.name)}: [")
+            first = False
+            columns = [c for c in table.columns if c.name not in EXPORT_REDACTED_COLUMNS]
+            rows = db.execute(select(*columns).where(table.c.organization_id == org.id)).mappings()
+            for i, row in enumerate(rows):
+                out.write(("," if i else "") + "\n" + json.dumps(dict(row), default=str))
+                total += 1
+            out.write("]")
+        out.write("\n}}\n")
+        audit.record(db, organization_id=org.id, action="organization.exported", actor_email="cli", data={"rows": total})
+    print(f"Wrote {total} rows for {slug} to {path}")
+
+
+def delete_organization(slug: str, confirm: str) -> None:
+    """Removes the organization and, by cascade, every row it owns, then its stored files. Not reversible.
+
+    Runs as the schema owner (CTEM_MIGRATION_DATABASE_URL): the application role cannot delete an
+    organization or any audit record, by design."""
+    from sqlalchemy import create_engine, text
+
+    from app.core import storage
+    from app.core.config import get_settings
+    from app.models import Assessment, Evidence, Report
+
+    if confirm != slug:
+        raise SystemExit("Refusing: --confirm must repeat the organization's slug")
+    with system_session() as db:
+        org = _organization(db, slug)
+        org_id = org.id
+        keys = set(db.execute(select(Evidence.storage_key).where(Evidence.organization_id == org_id, Evidence.storage_key.isnot(None))).scalars())
+        keys |= set(db.execute(select(Report.storage_key).where(Report.organization_id == org_id, Report.storage_key.isnot(None))).scalars())
+        keys |= {a.config["storage_key"] for a in db.execute(select(Assessment).where(Assessment.organization_id == org_id)).scalars()
+                 if (a.config or {}).get("storage_key")}
+    owner = create_engine(get_settings().migration_database_url)
+    try:
+        with owner.begin() as conn:
+            conn.execute(text("select set_config('app.system', 'on', true)"))
+            conn.execute(text("delete from organizations where id = :id"), {"id": org_id})
+    finally:
+        owner.dispose()
+    failed = 0
+    for key in keys:
+        try:
+            storage.get_storage().delete(key)
+        except Exception:  # noqa: BLE001  (report the count; the database rows are already gone)
+            failed += 1
+    print(f"Deleted organization {slug} and {len(keys) - failed} stored files" + (f"; {failed} files could not be removed" if failed else ""))
+
+
 def main() -> None:
     args = sys.argv[1:]
     if args[:1] == ["grant-super-admin"] and len(args) == 2:
@@ -66,6 +152,12 @@ def main() -> None:
         verify_audit(args[1])
     elif args == ["rotate-secrets"]:
         rotate_secrets()
+    elif args == ["purge-expired"]:
+        purge_expired()
+    elif args[:1] == ["export-organization"] and len(args) == 3:
+        export_organization(args[1], args[2])
+    elif args[:1] == ["delete-organization"] and len(args) == 4 and args[2] == "--confirm":
+        delete_organization(args[1], args[3])
     elif args == ["seed-demo"]:
         from app.domains.demo import seed
 

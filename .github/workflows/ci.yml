@@ -77,6 +77,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
+      - name: Every component declares the same version
+        run: python3 scripts/check_versions.py
       - name: Secret scan
         uses: gitleaks/gitleaks-action@v2
         env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
@@ -92,11 +94,28 @@ jobs:
       - run: docker build --target worker -t ctem/worker:ci backend
       - run: docker build -t ctem/web:ci frontend
       - run: docker build -f Dockerfile.demo -t ctem/demo:ci .
-      - name: Smoke-test the demo image
+      - name: Start the demo image
         run: |
-          docker run -d --name demo -p 10000:10000 ctem/demo:ci
+          # A higher sign-in limit for the browser tests, which sign in as several roles from one address.
+          docker run -d --name demo -p 10000:10000 -e CTEM_RATE_LIMIT_AUTH=200 -e CTEM_WORKER_START_DELAY_SECONDS=5 ctem/demo:ci
           for i in $(seq 1 60); do curl -sf http://127.0.0.1:10000/api/v1/demo > demo.json && break; sleep 3; done
           docker logs demo | tail -40
           python3 -c "import json; d = json.load(open('demo.json')); assert len(d['accounts']) == 9, d"
           curl -sf -o /dev/null http://127.0.0.1:10000/login
-          docker rm -f demo
+      - uses: pnpm/action-setup@v4
+        with: { package_json_file: frontend/package.json }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: frontend/pnpm-lock.yaml }
+      - name: Browser tests against the running demo
+        working-directory: frontend
+        env: { E2E_BASE_URL: "http://localhost:10000" }
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+          pnpm e2e
+      - name: Demo log, if the browser tests failed
+        if: failure()
+        run: docker logs demo | tail -200
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: playwright-report, path: frontend/playwright-report/, retention-days: 7 }

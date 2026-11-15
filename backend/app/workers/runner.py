@@ -35,6 +35,7 @@ PERIODIC: dict[str, timedelta] = {
     "risk.expire_acceptances": timedelta(hours=1),
     "policies.evaluate": timedelta(hours=24),
     "assets.mark_stale": timedelta(hours=24),
+    "platform.retention": timedelta(hours=24),
 }
 INTEL_INTERVAL = timedelta(hours=24)
 INTEL_SOURCES = ("cisa_kev", "epss")

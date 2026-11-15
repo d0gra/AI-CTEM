@@ -6,8 +6,9 @@ import pickle
 
 import httpx
 import pytest
+from aictem.detectors import models as model_scan
 
-from app.engines.ai import mcp_analysis, model_scan
+from app.engines.ai import mcp_analysis
 from app.integrations.intel import sources as intel
 from app.integrations.llm import client as llm
 from tests.test_scanners import osv_transport
@@ -61,12 +62,13 @@ def run(org, drain, assessment_id, **body):
 def test_pickle_analysis_does_not_execute_and_explains_itself(tmp_path):
     path = tmp_path / "m.pkl"
     path.write_bytes(pickle.dumps(_Exec()))
-    result = model_scan.inspect(path, "pickle")
-    assert result["scanned"] and result["dangerous"][0]["import"] in ("posix.system", "os.system", "nt.system")
-    assert result["dangerous"][0]["reason"] == "process and filesystem control"
+    imports, error = model_scan.pickle_imports(path.read_bytes())
+    hits = model_scan.dangerous(imports)
+    assert error is None and hits[0]["import"] in ("posix.system", "os.system", "nt.system")
+    assert hits[0]["reason"] == "process and filesystem control"
     safe = tmp_path / "s.pkl"
     safe.write_bytes(pickle.dumps({"weights": [1, 2, 3]}))
-    assert model_scan.inspect(safe, "pickle")["dangerous"] == []
+    assert model_scan.dangerous(model_scan.pickle_imports(safe.read_bytes())[0]) == []
 
 
 def test_mcp_tool_poisoning_indicators():
@@ -111,9 +113,9 @@ def test_repository_ai_discovery(org, drain, repo, monkeypatch):
     assert len(rules["ai.secret.anthropic_api_key"]) == 1  # the .env.example placeholder is not reported
     assert {f["asset_name"] for f in rules["ai.shadow.unapproved_provider"]} == {"Anthropic in support-bot", "Cohere in support-bot", "Ollama in support-bot"}
     pickle_finding = org.ok("GET", f"/findings/{rules['ai.model.pickle_code_execution'][0]['id']}")
-    assert pickle_finding["asset_name"] == "Model artifact classifier.pkl" and pickle_finding["ai"]["owasp_llm"] == "LLM03:2025"
-    assert "does not by itself establish intent" in pickle_finding["description"]
-    assert [f["asset_name"] for f in rules["ai.model.unsafe_serialization"]] == ["Model artifact scaler.pkl"]
+    assert pickle_finding["asset_name"] == "Pickle file classifier.pkl" and pickle_finding["ai"]["owasp_llm"] == "LLM03:2025"
+    assert "the file was not loaded" in pickle_finding["description"]
+    assert [f["asset_name"] for f in rules["ai.model.unsafe_serialization"]] == ["Pickle file scaler.pkl"]
     assert len(rules["ai.model.provenance_unverified"]) == 3
     by_server = {(f["rule_id"], f["asset_name"]) for f in org.ok("GET", "/findings?domain=ai_mcp&page_size=50")["items"]}
     assert {("mcp.config.unpinned_server", "MCP server files"), ("mcp.config.broad_filesystem_scope", "MCP server files"),
@@ -412,3 +414,60 @@ def test_custom_http_target_skips_tests_that_need_a_known_secret(org, drain, mon
     assert tests["SPC-001"]["outcome"] == "not_vulnerable"  # runs because a forbidden marker was supplied
     finding = org.ok("GET", "/findings?source=ai_redteam")["items"][0]
     assert finding["domain"] == "ai_rag" and org.ok("GET", f"/assets/{finding['asset_id']}")["type"] == "ai_application"
+
+
+def test_repository_analysis_never_runs_git_and_keeps_the_job_alive(org, drain, repo, monkeypatch):
+    """A checkout is untrusted: its git configuration can name programs, so a worker must not start git.
+    A long scan must also heartbeat, or the job is taken for abandoned and started a second time."""
+    import subprocess
+    import time
+
+    from aictem import scan as aictem_scan
+
+    from app.workers import queue
+
+    monkeypatch.setattr(intel, "TRANSPORT", httpx.MockTransport(osv_transport))
+    (repo / ".git").mkdir()
+    (repo / ".git" / "config").write_text("[core]\n\tfsmonitor = /bin/false\n[remote \"origin\"]\n\turl = https://github.com/acme/support-bot.git\n")
+    (repo / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+
+    def no_processes(*args, **kwargs):
+        raise AssertionError(f"repository analysis started a process: {args[0] if args else kwargs}")
+
+    monkeypatch.setattr(subprocess, "run", no_processes)
+    monkeypatch.setattr(subprocess, "Popen", no_processes)
+    beats, real_scan, real_checkpoint = [], aictem_scan.run, queue.JobContext.checkpoint
+
+    def slow_scan(*args, **kwargs):
+        time.sleep(5)  # longer than the engine's two-second wait, so it must heartbeat at least once
+        return real_scan(*args, **kwargs)
+
+    def counting_checkpoint(self):
+        beats.append(time.monotonic())
+        return real_checkpoint(self)
+
+    monkeypatch.setattr(aictem_scan, "run", slow_scan)
+    monkeypatch.setattr(queue.JobContext, "checkpoint", counting_checkpoint)
+    scope(org, "path", str(repo))
+    a = org.ok("POST", "/assessments", json={"name": "git repo", "kind": "repository_analysis", "targets": [{"kind": "path", "value": str(repo)}]})
+    result = run(org, drain, a["id"])
+    assert result["status"] == "succeeded", result
+    assert len(beats) >= 2
+    # The remote is still read (from the config file, without git), so the repository keeps its identity.
+    assert any(x["identifier"] == "github.com/acme/support-bot" for x in org.ok("GET", "/assets?type=repository")["items"])
+
+
+def test_a_provider_under_review_is_not_overwritten_by_the_next_scan(org, drain, repo, monkeypatch):
+    monkeypatch.setattr(intel, "TRANSPORT", httpx.MockTransport(osv_transport))
+    org.ok("PUT", "/ai/governance/approved-providers", json={"providers": ["openai"]})
+    scope(org, "path", str(repo))
+    a = org.ok("POST", "/assessments", json={"name": "repo", "kind": "repository_analysis", "targets": [{"kind": "path", "value": str(repo)}]})
+    assert run(org, drain, a["id"])["status"] == "succeeded"
+    by_name = lambda: {x["name"]: x for x in org.ok("GET", "/ai/assets?page_size=100")["items"]}  # noqa: E731
+    cohere = by_name()["Cohere in support-bot"]
+    assert cohere["approval_status"] == "unapproved"
+    org.ok("PATCH", f"/ai/assets/{cohere['id']}", json={"approval_status": "under_review"})
+    assert run(org, drain, a["id"])["status"] == "succeeded"
+    assets = by_name()
+    assert assets["Cohere in support-bot"]["approval_status"] == "under_review"
+    assert assets["Anthropic in support-bot"]["approval_status"] == "unapproved" and assets["OpenAI in support-bot"]["approval_status"] == "approved"

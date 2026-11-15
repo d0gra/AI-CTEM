@@ -5,6 +5,11 @@ All notable changes are recorded here. The format follows Keep a Changelog; vers
 ## [0.3.0] - 2026-11-12
 
 ### Added
+- **One discovery implementation.** The repository analysis engine now runs the `aictem` library instead of its own, older detectors, so a worker and the CLI give the same inventory for the same repository, through one ingestion path. Repository analysis gains what only the CLI had: agents with their tools and capabilities, RAG pipelines, inference endpoints, MCP clients and servers implemented in the repository, containers, IaC and CI findings, 51 recognised technologies instead of 26, and all 30 accuracy fixes. Provider approval and model provenance are now decided by the platform for uploaded inventories as well.
+- **Data retention.** A daily job removes finished jobs, expired sessions and one-time links, old notifications, repeat asset observations, generated reports and stored copies of uploaded scanner reports after configurable periods (`CTEM_RETENTION_*_DAYS`, `0` to keep). Assets, findings, evidence and the audit log are never removed, and each purge is recorded in the audit log.
+- **Organization export and deletion** for operators: `python -m app.cli export-organization` writes everything stored for an organization without credentials, and `delete-organization` removes it permanently, including stored files.
+- **Platform releases.** Pushing a `v*` tag publishes the `api`, `worker`, `web` and `demo` images to GitHub Container Registry with build provenance and an SBOM attestation, and opens a GitHub release. The Kubernetes manifests reference those images.
+- **Browser tests** (Playwright) for sign-in, every product area, the AI Security discovery tab, role-based controls, demo-mode restrictions and the sample analysis. CI runs them against the demo image it has just built.
 - The discovery CLI is surfaced where it is needed: **AI Security -> Discovery and assessment** and the supply-chain module now show how to install `aictem` (pip, pipx, uv or no install at all) and the commands to scan a repository, upload an inventory or gate a build, each with a copy button.
 - The AI Security module accepts report uploads. It previously had no import path at all, so an `aictem` inventory could only be uploaded from another module's page.
 - The CLI is published on PyPI as **`aictem`** (`pipx install aictem`), renamed from `ctem`. The Python package, the command and the platform's upload format are all `aictem`; the inventory schema is `aictem-inventory/1`.
@@ -24,7 +29,19 @@ All notable changes are recorded here. The format follows Keep a Changelog; vers
 - User invitations: administrators no longer choose passwords for other people; invitees set their own from a 7-day link that can be re-issued.
 - Search, filters, sorting and page of the main tables are kept in the address bar, so views can be bookmarked and deep links such as `/findings?source=import:trivy` work.
 
+### Security
+- **`aictem` 0.1.1: scanning a repository could run a program named in that repository's git configuration.** The CLI asks git which files are tracked, and git runs `core.fsmonitor` during `ls-files`; a hostile repository could therefore execute a command on the machine scanning it. The settings that make git start programs are now overridden on the command line. Upgrade from 0.1.0 before scanning repositories you do not trust.
+- The repository analysis engine never starts git on a worker.
+
+### Fixed
+- A long repository analysis is no longer taken for an abandoned job and started a second time: the engine heartbeats while the scan runs, and a cancelled run stops being recorded.
+- A provider someone marked "under review" is no longer set back to "unapproved" by the next scan.
+- Retest is refused for a finding that came from an uploaded report. Parsing the same stored file again always found the finding again, so the retest could never verify a fix; the finding now says to upload a new report or record a manual verification.
+
 ### Changed
+- Every component now declares the same version (backend, frontend, API metadata, Kubernetes manifests and changelog were split between 0.1.0 and 0.3.0); `scripts/check_versions.py` enforces it in CI and before a release.
+- Repository analysis identifies assets the way the CLI does. For a repository with a git remote, the repository and its AI assets are now identified by the remote (for example `github.com/acme/shop`) instead of the path on the worker, so the first run after upgrading creates new asset records beside the old ones. Pickled model files are named "Pickle file ..." in the inventory, and credentials that are not AI provider keys are reported for the first time, as `secret.*`.
+- The demo's sample repository defines real agent tools (refund, email, search), so the demo shows an agent with high-impact tools and no approval step.
 - Demo start-up binds the web port before database setup (Render fails deploys whose port doesn't open in time); `CTEM_WORKER_START_DELAY_SECONDS` delays the embedded worker. Tests never call live threat-intel feeds; CI Semgrep uses `p/default`.
 - Lower memory use: `CTEM_EMBEDDED_WORKER` runs the job worker inside the API process; the Anthropic SDK and boto3 load on first use; the MITRE ATT&CK bundle is decoded one object at a time instead of all at once; `CTEM_DB_MAX_OVERFLOW` sets the connection pool overflow; finished jobs log the process's peak memory.
 - Scanner uploads are no longer listed as assessments.

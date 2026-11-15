@@ -49,9 +49,12 @@ Import the module from `app/engines/registry.py`. The UI picks the engine up fro
 - External services are replaced with `httpx.MockTransport` (`intel.TRANSPORT`, `llm.TRANSPORT`) or moto.
 - Add an isolation assertion to `test_isolation_security.py` for every new resource type.
 
+- Browser tests (`frontend/e2e/`, Playwright) run against a demo-mode instance, which seeds one account per role. CI runs them against the demo image it has just built. Locally, point `E2E_BASE_URL` at any instance started with `CTEM_DEMO_MODE=true`; raise `CTEM_RATE_LIMIT_AUTH` if you run them repeatedly, since they sign in as several roles from one address.
+
 ```bash
 cd backend && uv run pytest -k workflow      # subset
 cd frontend && pnpm test
+cd frontend && pnpm exec playwright install chromium && E2E_BASE_URL=http://localhost:10000 pnpm e2e
 ```
 
 ## Checks before a pull request
@@ -59,6 +62,7 @@ cd frontend && pnpm test
 ```bash
 cd backend && uv run ruff check . && uv run alembic check && uv run pytest
 cd frontend && pnpm lint && pnpm typecheck && pnpm test && pnpm build
+python3 scripts/check_versions.py
 ```
 
 ## Troubleshooting

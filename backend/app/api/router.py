@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 import app.domains.ai.posture  # noqa: F401  (job handlers)
+import app.domains.platform.retention  # noqa: F401  (job handler)
 import app.engines.registry  # noqa: F401  (registers assessment engines and job handlers)
 from app.domains.admin.router import router as admin_router
 from app.domains.ai.router import router as ai_router

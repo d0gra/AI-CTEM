@@ -57,4 +57,4 @@ API responses carry `Content-Security-Policy: default-src 'none'`, `X-Frame-Opti
 
 ## Not yet done
 
-Independent penetration test; SSO; per-API-key credentials for automation (bearer session tokens are used); field-level encryption of evidence; malware scanning of uploads; signed container images and SBOM publication for the platform itself.
+Independent penetration test; SSO; per-API-key credentials for automation (bearer session tokens are used); field-level encryption of evidence; malware scanning of uploads. Released container images carry build provenance and an SBOM attestation, but are not yet signed with a separate key.

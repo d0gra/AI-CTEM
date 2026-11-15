@@ -18,7 +18,7 @@ type Installer = (typeof INSTALLERS)[number]["id"];
 const COMMANDS: { cmd: string; what: string }[] = [
   { cmd: "aictem discover .", what: "Scan this directory and print a summary of the assets and findings it found." },
   { cmd: "aictem discover . --all", what: "List every asset and finding instead of the top of each group." },
-  { cmd: "aictem discover . --approved-providers openai,anthropic", what: "Report any other model provider as shadow AI." },
+  { cmd: "aictem discover . --approved-providers openai,anthropic", what: "Report any other model provider as shadow AI in the CLI's own output. On upload, the platform applies the approved list under Governance instead." },
   { cmd: "aictem discover . --vulns", what: "Look up known vulnerabilities for pinned packages against osv.dev." },
   { cmd: "aictem discover . -f sarif -o aictem.sarif", what: "Write SARIF for GitHub code scanning or another SARIF dashboard." },
   { cmd: "aictem discover . -f json -o inventory.json", what: "Write the full inventory. This is the file the Import button on this page accepts." },

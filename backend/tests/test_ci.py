@@ -77,3 +77,20 @@ def test_manual_upload_appears_in_history(org, drain):
     drain()
     item = org.ok("GET", "/imports", params={"source": "manual"})["items"][0]
     assert item["status"] == "succeeded" and item["ci"] is None and item["filename"] == "trivy.json"
+
+
+def test_a_finding_from_an_uploaded_report_cannot_be_retested(app, org, drain):
+    """Parsing the same stored file again would always find it again, so the API refuses instead of pretending to verify."""
+    import json as _json
+
+    report = {"Results": [{"Target": "requirements.txt", "Type": "pip", "Vulnerabilities": [
+        {"VulnerabilityID": "CVE-2099-0001", "PkgName": "example", "InstalledVersion": "1.0.0", "Severity": "HIGH", "Title": "Example flaw"}]}]}
+    files = {"file": ("trivy.json", _json.dumps(report), "application/json")}
+    org.ok("POST", "/scanner-imports", data={"format": "trivy", "target": "git@github.com:acme/shop.git"}, files=files)
+    drain()
+    finding = org.ok("GET", "/findings", params={"q": "CVE-2099-0001"})["items"][0]
+    detail = org.ok("GET", f"/findings/{finding['id']}")
+    assert detail["can_automated_retest"] is False
+    r = org.post(f"/findings/{finding['id']}/retest")
+    assert r.status_code == 409 and "Upload a new report" in r.text
+    assert org.ok("GET", f"/findings/{finding['id']}")["status"] == detail["status"]  # not moved to pending validation

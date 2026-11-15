@@ -1,8 +1,10 @@
-"""Import of `aictem discover` inventories (report format "aictem", schema aictem-inventory/1).
+"""Ingestion of `aictem` inventories (schema aictem-inventory/1).
 
-The CLI runs where the code is (a developer machine or a CI job) and reports assets, relationships and
-findings. Everything is validated against the platform's own types before use; package versions are
-checked against OSV here, so vulnerability data never depends on the client.
+One path for both sources: an inventory uploaded by a person or a pipeline (report format "aictem"),
+and the one the repository analysis engine produces by running the same library on a worker.
+Everything is validated against the platform's own types before use. Three things are decided here
+and never taken from the client: known vulnerabilities (OSV lookup), whether a provider is approved
+(the organization's governance list), and whether a model's provenance is verified.
 """
 
 from __future__ import annotations
@@ -13,7 +15,7 @@ from app.domains.assessments.service import EngineContext
 from app.domains.assets.service import AssetSpec
 from app.domains.findings.service import EvidenceInput, FindingInput
 from app.integrations.scanners.parsers import ReportFormatError, SbomComponent, _ecosystem
-from app.models import AIAgent, AIIntegration, MCPServer
+from app.models import AIAgent, AIAsset, AIIntegration, AIModel, MCPServer
 from app.models.asset import ASSET_TYPES, RELATIONSHIP_TYPES
 from app.models.finding import CONFIDENCES, FINDING_DOMAINS
 
@@ -21,6 +23,7 @@ SCHEMA = "aictem-inventory/1"
 MAX_ASSETS, MAX_FINDINGS, MAX_RELATIONSHIPS = 25_000, 20_000, 50_000
 SEVERITIES = {"critical", "high", "medium", "low", "info"}
 AI_KEYS = {"provider", "framework", "managed"}
+PLATFORM_RULES = ("osv.", "ai.shadow.unapproved_provider", "ai.model.provenance_unverified")  # decided here, not by the client
 
 
 def _clip(value, depth: int = 0):
@@ -48,7 +51,13 @@ def parse(data: bytes) -> dict:
 
 
 def ingest(ctx: EngineContext, data: bytes, target: str | None, source: str) -> None:
-    doc = parse(data)
+    ingest_document(ctx, parse(data), target, source)
+
+
+def ingest_document(ctx: EngineContext, doc: dict, target: str | None, source: str, *, vulnerabilities: bool = True) -> None:
+    from app.domains.risk.policy import load_policy
+
+    approved = {p.lower() for p in load_policy(ctx.db, ctx.assessment.organization_id).approved_ai_providers}
     refs = {}
     components: list[SbomComponent] = []
     skipped = 0
@@ -82,8 +91,9 @@ def ingest(ctx: EngineContext, data: bytes, target: str | None, source: str) -> 
         if repo is None:
             raise ReportFormatError("The inventory has no repository asset")
         _extensions(ctx, asset, item["type"], attributes, repo)
+        _governance(ctx, asset, item["type"], attributes, repo, approved, source)
 
-    if components:  # versions checked against OSV by the platform
+    if components and vulnerabilities:  # versions checked against OSV by the platform
         from app.engines.scanners import analyse_components
 
         ctx.stats.update({f"packages_{k}": v for k, v in analyse_components(ctx, repo, components, source).items()})
@@ -99,8 +109,8 @@ def ingest(ctx: EngineContext, data: bytes, target: str | None, source: str) -> 
         if not isinstance(f, dict) or f.get("severity") not in SEVERITIES or f.get("domain") not in FINDING_DOMAINS:
             skipped += 1
             continue
-        if str(f.get("rule_id", "")).startswith("osv."):
-            continue  # vulnerabilities come from the platform's own OSV lookup above
+        if str(f.get("rule_id", "")).startswith(PLATFORM_RULES):
+            continue  # vulnerabilities, provider approval and model provenance are the platform's own findings
         asset = refs.get(f.get("asset")) or repo
         evidence = _clip(f.get("evidence") or {})
         where = {k: f[k] for k in ("file", "line") if f.get(k)}
@@ -168,3 +178,51 @@ def _extensions(ctx: EngineContext, asset, asset_type: str, attributes: dict, re
                                      version=(str(u["version"])[:64] if u.get("version") else None), first_seen_at=now, last_seen_at=now, **key))
             else:
                 existing.last_seen_at = now
+
+
+def _governance(ctx: EngineContext, asset, asset_type: str, attributes: dict, repo, approved: set[str], source: str) -> None:
+    """Findings that depend on what the organization has recorded, not on what the scan saw."""
+    db = ctx.db
+    if asset_type == "ai_provider" and approved and attributes.get("category") in ("provider", "serving"):
+        provider = str(asset.identifier).split("@", 1)[0]
+        row = db.get(AIAsset, asset.id)
+        status = "approved" if provider in approved else "unapproved"
+        if row is not None and row.approval_status in ("unknown", "approved", "unapproved"):
+            row.approval_status = status  # "under_review" was set by a person and stays until they change it
+        if status == "unapproved":
+            name = str(attributes.get("technology") or provider)
+            usage = [u for u in attributes.get("usage") or [] if isinstance(u, dict)]
+            ctx.finding(FindingInput(
+                asset=asset, source=source, rule_id="ai.shadow.unapproved_provider", domain="shadow_ai", severity="medium",
+                confidence="confirmed", nist_ai_rmf="GOVERN 6.1", title=f"Unapproved AI provider in use: {name} ({repo.name})",
+                description=f"{name} is used by this repository but is not on the organization's approved AI provider list "
+                            f"({', '.join(sorted(approved))}).",
+                business_impact="Data may be sent to a provider without a reviewed contract, data-processing terms or retention controls.",
+                remediation="Review the integration with the AI governance owner: approve the provider, or migrate to an approved one.",
+                evidence=[EvidenceInput("file", f"{name} detections", {"locations": [str(u.get("location"))[:300] for u in usage[:8]],
+                                                                         "methods": _clip(attributes.get("methods") or [])})]))
+    if asset_type == "ai_model":
+        from app.db.base import utcnow
+
+        row = db.get(AIModel, asset.id)
+        if row is None:
+            row = AIModel(organization_id=asset.organization_id, asset_id=asset.id, model_name=str(asset.name)[:255])
+            db.add(row)
+        path = str(attributes.get("path") or "")
+        if attributes.get("format"):
+            row.artifact_format = str(attributes["format"])[:32]
+        if isinstance(attributes.get("sha256"), str):
+            row.sha256 = attributes["sha256"][:64]
+        if isinstance(attributes.get("size_bytes"), int):
+            row.size_bytes = min(attributes["size_bytes"], 2**31 - 1)
+        if path:
+            row.source_uri = path[:1024]
+            row.last_scanned_at = utcnow()
+        if path and row.provenance_verified is not True:  # a file in the repository, not a reference to a hosted model
+            ctx.finding(FindingInput(
+                asset=asset, source=source, rule_id="ai.model.provenance_unverified", domain="ai_model", severity="low",
+                confidence="confirmed", nist_ai_rmf="MAP 4.1", owasp_llm="LLM03:2025", discriminator=path[:300],
+                title=f"Model artifact has no verified provenance: {path.rsplit('/', 1)[-1]}",
+                description="No source, signature or attestation is recorded for this artifact in the inventory.",
+                remediation="Record the origin and expected digest of the model (or a Sigstore/model-signing attestation) and mark provenance verified.",
+                evidence=[EvidenceInput("file", f"Model artifact {path}", {"file": path, "sha256": attributes.get("sha256")})]))

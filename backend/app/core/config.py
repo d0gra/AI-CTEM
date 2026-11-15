@@ -88,6 +88,15 @@ class Settings(BaseSettings):
     max_running_jobs_per_org: int = 4
     asset_stale_days: int = 30
 
+    # Retention, in days, of operational records (0 keeps them forever). Assets, findings, evidence and the
+    # audit log are never removed by retention. Applied daily per organization by the platform.retention job.
+    retention_jobs_days: int = Field(default=30, ge=0)  # finished background jobs
+    retention_sessions_days: int = Field(default=30, ge=0)  # expired or revoked sessions, expired one-time tokens
+    retention_notifications_days: int = Field(default=180, ge=0)
+    retention_asset_observations_days: int = Field(default=365, ge=0)  # repeat "observed" events; the rest of an asset's history is kept
+    retention_reports_days: int = Field(default=365, ge=0)  # generated report files
+    retention_uploads_days: int = Field(default=90, ge=0)  # stored copies of uploaded scanner reports (their findings are kept)
+
     # Claude for AI-assisted analysis. When enabled, organizations may use the Claude credentials of the
     # API/worker host (ANTHROPIC_API_KEY, an `ant auth login` profile, or workload identity federation)
     # instead of storing an API key. Leave off on shared multi-tenant deployments: usage is billed to the operator.
