@@ -155,6 +155,7 @@ jobs:
           up http://127.0.0.1:3001/login
           up http://127.0.0.1:3002/login                                          # and the waiting one started
           test "$( (docker logs a1; docker logs a2) 2>&1 | grep -c 'Running upgrade 0006 -> 0007')" = 1
+          up http://127.0.0.1:8000/readyz                                         # the API starts after the web server
           curl -sf http://127.0.0.1:8000/readyz | grep -q '"schema":"ok"'
           # 401 rather than 502: the web tier really is proxying /api/* to the API in the same container.
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/v1/auth/me)" = 401
